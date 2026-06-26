@@ -107,7 +107,7 @@ export default async function ReportBuilderPage({ params, searchParams }: { para
     <>
       <header className="page-header">
         <div><p className="eyebrow">{reportStatusLabel(report.status).toUpperCase()} · VERSÃO {report.current_version || 0}</p><h1>{report.title}</h1><p>{process?.process_number || "Processo não identificado"} · {reportType?.name || "Tipo não identificado"}</p></div>
-        <div className="header-actions"><Link className="button button-secondary" href="/laudos">Voltar</Link>{process && <Link className="button button-secondary" href={`/processos/${process.id}`}>Abrir processo</Link>}<a className="button button-primary" href={`/api/laudos/${id}/word`}>Exportar Word</a>{["owner", "admin"].includes(organization.role) && <DeleteReportButton action={deleteReport} reportTitle={report.title} />}</div>
+        <div className="header-actions"><Link className="button button-secondary" href="/laudos">Voltar</Link>{process && <Link className="button button-secondary" href={`/processos/${process.id}`}>Abrir processo</Link>}<Link className="button button-secondary" href="/configuracoes">Identidade</Link><a className="button button-secondary" href={`/api/laudos/${id}/word`}>Exportar Word</a><a className="button button-primary" href={`/api/laudos/${id}/pdf`}>Exportar PDF</a>{["owner", "admin"].includes(organization.role) && <DeleteReportButton action={deleteReport} reportTitle={report.title} />}</div>
       </header>
 
       {query.success && <div className="notice notice-success">{query.success}</div>}

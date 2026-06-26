@@ -430,3 +430,126 @@ select option:disabled,
     width: 100%;
   }
 }
+
+/* OCTA Perito v0.5 — identidade profissional e exportação */
+.identity-settings-form fieldset { border:0; padding:0; margin:0; min-width:0; }
+.identity-settings-form fieldset:disabled { opacity:.72; }
+.color-field { display:flex; align-items:center; gap:12px; min-height:48px; padding:6px 12px; border:1px solid var(--line); border-radius:11px; background:#081827; }
+.color-field input[type="color"] { width:54px; height:34px; padding:0; border:0; background:transparent; cursor:pointer; }
+.color-field code { color:#d7e4ed; font-weight:750; }
+.brand-assets-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin-bottom:26px; }
+.brand-asset-card { padding:18px; border:1px solid var(--line); border-radius:14px; background:rgba(255,255,255,.018); }
+.brand-preview { height:150px; display:grid; place-items:center; margin-bottom:16px; border:1px dashed rgba(128,177,216,.32); border-radius:12px; background:#f5f8fa; overflow:hidden; }
+.brand-preview img { max-width:88%; max-height:118px; object-fit:contain; }
+.brand-preview span { color:#5d6973; font-weight:750; }
+.brand-preview-signature { background:#fff; }
+.file-input { width:100%; padding:11px; border:1px solid var(--line); border-radius:10px; background:#081827; color:var(--text); }
+.file-input::file-selector-button { margin-right:12px; padding:8px 12px; border:0; border-radius:8px; background:var(--green); color:#04131f; font-weight:850; cursor:pointer; }
+.settings-check-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:24px; }
+.setting-check { display:flex; align-items:flex-start; gap:12px; padding:15px; border:1px solid var(--line); border-radius:12px; background:rgba(255,255,255,.018); cursor:pointer; }
+.setting-check input { margin-top:4px; width:18px; height:18px; accent-color:var(--green); }
+.setting-check span,.setting-check strong,.setting-check small { display:block; }
+.setting-check strong { font-size:.82rem; color:var(--text); }
+.setting-check small { margin-top:4px; color:var(--muted); font-size:.69rem; line-height:1.45; }
+.export-capabilities-card { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0; padding:0; overflow:hidden; margin-top:18px; }
+.export-capabilities-card > div { padding:22px; border-right:1px solid var(--line); }
+.export-capabilities-card > div:last-child { border-right:0; }
+.export-capabilities-card h3 { margin:12px 0 7px; }
+.export-capabilities-card p { margin:0; color:var(--muted); font-size:.75rem; line-height:1.55; }
+.button-small { min-height:34px; padding:7px 11px; font-size:.68rem; }
+@media (max-width:900px){.brand-assets-grid,.settings-check-grid,.export-capabilities-card{grid-template-columns:1fr}.export-capabilities-card>div{border-right:0;border-bottom:1px solid var(--line)}.export-capabilities-card>div:last-child{border-bottom:0}}
+
+/* OCTA Perito v0.6 — Honorários por processo */
+.finance-stats-grid { margin-bottom:16px; }
+.finance-overview-card { margin-top:16px; }
+.finance-overview-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:1px; overflow:hidden; border:1px solid var(--line); border-radius:13px; background:var(--line); }
+.finance-overview-grid > div { min-width:0; padding:16px; background:var(--surface); }
+.finance-overview-grid span,.finance-overview-grid strong { display:block; }
+.finance-overview-grid span { color:var(--muted); font-size:.67rem; }
+.finance-overview-grid strong { margin-top:6px; font-size:.93rem; }
+.finance-filter-form { margin-bottom:18px; padding-bottom:18px; border-bottom:1px solid var(--line); }
+.finance-process-list { display:grid; }
+.finance-process-row { display:grid; grid-template-columns:minmax(250px,1.25fr) minmax(170px,.62fr) repeat(3,minmax(115px,.42fr)) 24px; gap:14px; align-items:center; padding:16px 10px; border-top:1px solid var(--line); border-radius:10px; transition:.16s ease; }
+.finance-process-row:first-child { border-top:0; }
+.finance-process-row:hover { background:rgba(255,255,255,.025); transform:translateX(2px); }
+.finance-process-row span,.finance-process-row strong,.finance-process-row b { display:block; }
+.finance-process-row > div > span { color:var(--muted); font-size:.66rem; }
+.finance-process-row > div > strong { margin-top:5px; font-size:.8rem; }
+.finance-process-main strong { font-size:.88rem!important; }
+.finance-process-main span { margin-top:5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.finance-row-arrow { color:var(--green); font-size:1.65rem; text-align:right; }
+.finance-status { display:inline-flex!important; width:max-content; margin-top:5px; padding:5px 8px; border-radius:999px; font-size:.58rem!important; font-weight:900; line-height:1.2; text-transform:uppercase; letter-spacing:.025em; }
+.finance-status-not_defined,.finance-status-cancelled { color:#a7b5c1; background:rgba(167,181,193,.1); }
+.finance-status-proposal_draft,.finance-status-proposal_submitted { color:#c5dcff; background:rgba(90,146,255,.11); }
+.finance-status-awaiting_approval,.finance-status-awaiting_deposit,.finance-status-release_requested { color:#ffe7a3; background:rgba(255,209,102,.1); }
+.finance-status-approved,.finance-status-partially_deposited,.finance-status-partially_released { color:#d8c7ff; background:rgba(165,119,255,.11); }
+.finance-status-fully_deposited,.finance-status-fully_released { color:#bffff0; background:rgba(66,223,186,.11); }
+.finance-summary-card { grid-template-columns:repeat(6,1fr); }
+.finance-alert-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:16px; }
+.finance-alert-card { padding:19px; }
+.finance-alert-card span,.finance-alert-card strong,.finance-alert-card small { display:block; }
+.finance-alert-card span { color:var(--muted); font-size:.72rem; }
+.finance-alert-card strong { margin:8px 0 4px; font-size:1.3rem; }
+.finance-alert-card .finance-status { margin:10px 0 6px; }
+.finance-alert-card small { color:#71889c; font-size:.68rem; }
+.finance-main-grid { grid-template-columns:minmax(0,1.35fr) minmax(280px,.65fr); }
+.finance-form-divider { padding:15px 0 2px; border-top:1px solid var(--line); }
+.finance-form-divider strong,.finance-form-divider span { display:block; }
+.finance-form-divider strong { font-size:.85rem; }
+.finance-form-divider span { margin-top:4px; color:var(--muted); font-size:.7rem; }
+.finance-process-facts { gap:10px; }
+.finance-definition-list { display:grid; }
+.finance-definition-list > div { display:flex; justify-content:space-between; gap:14px; padding:11px 0; border-top:1px solid var(--line); }
+.finance-definition-list > div:first-child { border-top:0; }
+.finance-definition-list span { color:var(--muted); font-size:.7rem; }
+.finance-definition-list strong { max-width:62%; font-size:.73rem; text-align:right; }
+.finance-transaction-list { display:grid; }
+.finance-transaction-row { display:grid; grid-template-columns:42px minmax(190px,1.05fr) repeat(4,minmax(105px,.43fr)) auto; gap:12px; align-items:center; padding:15px 0; border-top:1px solid var(--line); }
+.finance-transaction-row:first-child { border-top:0; }
+.transaction-icon { width:38px; height:38px; display:grid; place-items:center; border-radius:11px; font-weight:950; }
+.transaction-deposit { color:#bffff0; background:rgba(66,223,186,.1); }
+.transaction-release { color:#c5dcff; background:rgba(90,146,255,.11); }
+.transaction-refund { color:#ffe7a3; background:rgba(255,209,102,.1); }
+.transaction-adjustment { color:#d8c7ff; background:rgba(165,119,255,.11); }
+.finance-transaction-row span,.finance-transaction-row strong,.finance-transaction-row small { display:block; }
+.finance-transaction-row > div > span { color:var(--muted); font-size:.64rem; }
+.finance-transaction-row > div > strong { margin-top:4px; font-size:.76rem; }
+.finance-transaction-row small { margin-top:3px; color:var(--muted); font-size:.6rem; }
+.finance-transaction-main strong { font-size:.82rem!important; }
+.finance-transaction-main span { margin-top:4px; }
+.finance-transaction-main p { margin:6px 0 0; color:#bdcbd7; font-size:.68rem; }
+.transaction-status { display:inline-flex!important; width:max-content; margin-top:4px; padding:5px 8px; border-radius:999px; font-size:.57rem!important; font-weight:900; text-transform:uppercase; }
+.transaction-status-planned { color:#c5dcff; background:rgba(90,146,255,.11); }
+.transaction-status-pending { color:#ffe7a3; background:rgba(255,209,102,.1); }
+.transaction-status-confirmed { color:#bffff0; background:rgba(66,223,186,.11); }
+.transaction-status-cancelled { color:#a7b5c1; background:rgba(167,181,193,.1); }
+.finance-transaction-actions { display:flex; justify-content:flex-end; gap:6px; flex-wrap:wrap; }
+.finance-transaction-actions form { margin:0; }
+.finance-add-panel { margin-top:18px; }
+
+@media (max-width:1280px){
+  .finance-overview-grid{grid-template-columns:repeat(3,1fr)}
+  .finance-process-row{grid-template-columns:minmax(240px,1fr) minmax(170px,.6fr) repeat(2,minmax(115px,.4fr)) 24px}
+  .finance-process-row>div:nth-child(5){display:none}
+  .finance-transaction-row{grid-template-columns:42px minmax(180px,1fr) repeat(3,minmax(105px,.45fr))}
+  .finance-transaction-row>div:nth-child(5),.finance-transaction-row>div:nth-child(6){grid-column:auto}
+  .finance-transaction-actions{grid-column:2/-1}
+}
+@media (max-width:1050px){
+  .finance-summary-card{grid-template-columns:repeat(3,1fr)}
+  .finance-alert-grid{grid-template-columns:1fr}
+  .finance-main-grid{grid-template-columns:1fr}
+  .finance-process-row{grid-template-columns:minmax(230px,1fr) minmax(165px,.6fr) repeat(2,minmax(110px,.4fr)) 24px}
+  .finance-process-row>div:nth-child(5){display:none}
+}
+@media (max-width:760px){
+  .finance-overview-grid{grid-template-columns:1fr}
+  .finance-summary-card{grid-template-columns:1fr}
+  .finance-process-row{grid-template-columns:1fr;gap:9px;padding:17px 6px}
+  .finance-process-row>div:nth-child(5){display:block}
+  .finance-row-arrow{display:none}
+  .finance-process-main span{white-space:normal}
+  .finance-transaction-row{grid-template-columns:42px 1fr;align-items:start}
+  .finance-transaction-row>div:not(.transaction-icon):not(.finance-transaction-main):not(.finance-transaction-actions){grid-column:2}
+  .finance-transaction-actions{grid-column:1/-1;justify-content:flex-start}
+}

@@ -30,12 +30,13 @@ export default async function ProcessDetailPage({ params, searchParams }: { para
   if (!organization) return null;
   const supabase = await createClient();
 
-  const [{ data: process }, { data: deadlines }, { data: activities }, { data: documents }, { data: reports }] = await Promise.all([
+  const [{ data: process }, { data: deadlines }, { data: activities }, { data: documents }, { data: reports }, { data: financialSummary }] = await Promise.all([
     supabase.from("processes").select("*").eq("id", id).eq("organization_id", organization.id).maybeSingle(),
     supabase.from("process_deadlines").select("*").eq("process_id", id).eq("organization_id", organization.id).order("due_at", { ascending: true }),
     supabase.from("process_activities").select("id, activity_type, description, created_at").eq("process_id", id).eq("organization_id", organization.id).order("created_at", { ascending: false }).limit(12),
     supabase.from("generated_documents").select("id,title,status,version,updated_at").eq("process_id", id).eq("organization_id", organization.id).order("updated_at", { ascending: false }),
     supabase.from("expert_reports").select("id,title,status,current_version,updated_at").eq("process_id", id).eq("organization_id", organization.id).order("updated_at", { ascending: false }),
+    supabase.from("process_financial_summary").select("proposed_total,approved_total,deposited_total,deposit_balance,received_total,financial_status").eq("process_id", id).eq("organization_id", organization.id).maybeSingle(),
   ]);
   if (!process) notFound();
 
@@ -67,7 +68,7 @@ export default async function ProcessDetailPage({ params, searchParams }: { para
     <>
       <header className="page-header">
         <div><p className="eyebrow">PROCESSO PERICIAL</p><h1>{process.process_number}</h1><p>{process.subject || "Objeto ainda não informado"}</p></div>
-        <div className="header-actions"><Link className="button button-secondary" href="/processos">Voltar</Link><Link className="button button-secondary" href={`/documentos/novo?process=${id}`}>Gerar petição</Link><Link className="button button-secondary" href={`/laudos/novo?process=${id}`}>Criar laudo</Link><Link className="button button-primary" href={`/processos/${id}/editar`}>Editar processo</Link>{canDelete && <DeleteProcessButton action={deleteProcess} processNumber={process.process_number} />}</div>
+        <div className="header-actions"><Link className="button button-secondary" href="/processos">Voltar</Link><Link className="button button-secondary" href={`/documentos/novo?process=${id}`}>Gerar petição</Link><Link className="button button-secondary" href={`/laudos/novo?process=${id}`}>Criar laudo</Link><Link className="button button-secondary" href={`/honorarios/${id}`}>Honorários</Link><Link className="button button-primary" href={`/processos/${id}/editar`}>Editar processo</Link>{canDelete && <DeleteProcessButton action={deleteProcess} processNumber={process.process_number} />}</div>
       </header>
 
       {query.error && <div className="notice notice-error">{query.error}</div>}
@@ -75,9 +76,9 @@ export default async function ProcessDetailPage({ params, searchParams }: { para
 
       <section className="card process-summary-card">
         <div><span>Status atual</span><strong>{processStatusLabel(process.status)}</strong></div>
-        <div><span>Honorários arbitrados</span><strong>{formatCurrency(process.fee_arbitrated)}</strong></div>
-        <div><span>Depositado</span><strong>{formatCurrency(process.fee_deposited)}</strong></div>
-        <div><span>Recebido</span><strong>{formatCurrency(process.fee_received)}</strong></div>
+        <div><span>Honorários homologados</span><strong>{formatCurrency(financialSummary?.approved_total ?? process.fee_arbitrated)}</strong></div>
+        <div><span>Depositado</span><strong>{formatCurrency(financialSummary?.deposited_total ?? process.fee_deposited)}</strong></div>
+        <div><span>Recebido</span><strong>{formatCurrency(financialSummary?.received_total ?? process.fee_received)}</strong></div>
       </section>
 
       <section className="dashboard-grid process-main-grid">
