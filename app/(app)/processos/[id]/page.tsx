@@ -1,28 +1,133 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
+import { SubmitButton } from "@/components/submit-button";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentOrganization } from "@/lib/current-organization";
+import { completeDeadlineAction, createDeadlineAction } from "@/app/actions/deadlines";
+import { updateProcessStatusAction } from "@/app/actions/processes";
+import {
+  DEADLINE_CATEGORY_OPTIONS,
+  deadlineCategoryLabel,
+  expertiseTypeLabel,
+  formatCurrency,
+  formatDate,
+  formatDateTime,
+  priorityLabel,
+  PRIORITY_OPTIONS,
+  PROCESS_STATUS_OPTIONS,
+  processStatusLabel,
+} from "@/lib/process-options";
 
 export const metadata = { title: "Detalhes da perícia" };
 
-const labels: Record<string,string> = { appointment_received:"Nomeação recebida", analysis:"Em análise", fees_proposed:"Honorários propostos", scheduled:"Diligência agendada", drafting:"Laudo em elaboração", delivered:"Laudo entregue", closed:"Encerrado" };
-
-export default async function ProcessDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ProcessDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string; success?: string }> }) {
   const { id } = await params;
+  const query = await searchParams;
   const organization = await getCurrentOrganization();
   if (!organization) return null;
   const supabase = await createClient();
-  const { data: process } = await supabase.from("processes").select("*").eq("id", id).eq("organization_id", organization.id).maybeSingle();
+
+  const [{ data: process }, { data: deadlines }, { data: activities }] = await Promise.all([
+    supabase.from("processes").select("*").eq("id", id).eq("organization_id", organization.id).maybeSingle(),
+    supabase.from("process_deadlines").select("*").eq("process_id", id).eq("organization_id", organization.id).order("due_at", { ascending: true }),
+    supabase.from("process_activities").select("id, activity_type, description, created_at").eq("process_id", id).eq("organization_id", organization.id).order("created_at", { ascending: false }).limit(12),
+  ]);
   if (!process) notFound();
 
   const details = [
-    ["Número do processo", process.process_number], ["Status", labels[process.status] || process.status], ["Tribunal", process.court || "Não informado"], ["Comarca", process.district || "Não informada"], ["Vara", process.division || "Não informada"], ["Tipo de atuação", process.expertise_type === "technical_assistant" ? "Assistente técnico" : process.expertise_type === "extrajudicial" ? "Extrajudicial" : "Perito judicial"], ["Autor", process.plaintiff || "Não informado"], ["Réu", process.defendant || "Não informado"], ["Objeto", process.subject || "Não informado"], ["Prazo do laudo", process.report_due_at ? new Date(process.report_due_at).toLocaleDateString("pt-BR") : "Não definido"]
+    ["Número do processo", process.process_number],
+    ["Tribunal", process.court || "Não informado"],
+    ["Comarca", process.district || "Não informada"],
+    ["Vara", process.division || "Não informada"],
+    ["Classe processual", process.case_class || "Não informada"],
+    ["Área da perícia", process.expertise_area || "Não informada"],
+    ["Tipo de atuação", expertiseTypeLabel(process.expertise_type)],
+    ["Prioridade", priorityLabel(process.priority)],
+    ["Responsável", process.responsible_name || "Não informado"],
+    ["Autor", process.plaintiff || "Não informado"],
+    ["Réu", process.defendant || "Não informado"],
+    ["Objeto", process.subject || "Não informado"],
+    ["Data da nomeação", formatDate(process.appointed_at)],
+    ["Prazo para manifestação", formatDate(process.appointment_response_due_at)],
+    ["Diligência", formatDateTime(process.diligence_at)],
+    ["Prazo do laudo", formatDate(process.report_due_at)],
   ];
+
+  const statusAction = updateProcessStatusAction.bind(null, id);
+  const deadlineAction = createDeadlineAction.bind(null, id);
 
   return (
     <>
-      <header className="page-header"><div><p className="eyebrow">PROCESSO PERICIAL</p><h1>{process.process_number}</h1><p>{process.subject || "Objeto ainda não informado"}</p></div><button className="button button-secondary" type="button" disabled>Editar em breve</button></header>
-      <section className="card panel"><div className="panel-header"><h2>Dados essenciais</h2><span className="status">{labels[process.status] || process.status}</span></div><div className="detail-grid">{details.map(([label,value]) => <div className="detail-item" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div></section>
-      <section className="dashboard-grid"><article className="card panel"><div className="panel-header"><h2>Próximas etapas</h2></div><div className="quick-actions"><div className="quick-action"><span>Analisar nomeação e documentos</span><b>01</b></div><div className="quick-action"><span>Definir honorários</span><b>02</b></div><div className="quick-action"><span>Agendar diligência</span><b>03</b></div><div className="quick-action"><span>Gerar documento técnico</span><b>04</b></div></div></article><article className="card panel"><div className="panel-header"><h2>Observações</h2></div><p style={{ color:"var(--muted)", whiteSpace:"pre-wrap" }}>{process.notes || "Nenhuma observação registrada."}</p></article></section>
+      <header className="page-header">
+        <div><p className="eyebrow">PROCESSO PERICIAL</p><h1>{process.process_number}</h1><p>{process.subject || "Objeto ainda não informado"}</p></div>
+        <div className="header-actions"><Link className="button button-secondary" href="/processos">Voltar</Link><Link className="button button-primary" href={`/processos/${id}/editar`}>Editar processo</Link></div>
+      </header>
+
+      {query.error && <div className="notice notice-error">{query.error}</div>}
+      {query.success && <div className="notice notice-success">{query.success}</div>}
+
+      <section className="card process-summary-card">
+        <div><span>Status atual</span><strong>{processStatusLabel(process.status)}</strong></div>
+        <div><span>Honorários arbitrados</span><strong>{formatCurrency(process.fee_arbitrated)}</strong></div>
+        <div><span>Depositado</span><strong>{formatCurrency(process.fee_deposited)}</strong></div>
+        <div><span>Recebido</span><strong>{formatCurrency(process.fee_received)}</strong></div>
+      </section>
+
+      <section className="dashboard-grid process-main-grid">
+        <article className="card panel">
+          <div className="panel-header"><h2>Dados essenciais</h2><span className={`status status-${process.status}`}>{processStatusLabel(process.status)}</span></div>
+          <div className="detail-grid">{details.map(([label, value]) => <div className="detail-item" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
+          <div className="notes-box"><span>Observações</span><p>{process.notes || "Nenhuma observação registrada."}</p></div>
+        </article>
+
+        <aside className="process-side-stack">
+          <article className="card panel">
+            <div className="panel-header"><h2>Atualizar etapa</h2></div>
+            <form className="status-form" action={statusAction}>
+              <select className="select" name="status" defaultValue={process.status}>{PROCESS_STATUS_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select>
+              <SubmitButton pendingText="Atualizando...">Salvar status</SubmitButton>
+            </form>
+          </article>
+
+          <article className="card panel">
+            <div className="panel-header"><h2>Novo prazo</h2></div>
+            <form className="form-stack compact-form" action={deadlineAction}>
+              <label className="field"><span>Título</span><input className="input" name="title" placeholder="Ex.: manifestação sobre honorários" required /></label>
+              <label className="field"><span>Categoria</span><select className="select" name="category">{DEADLINE_CATEGORY_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+              <label className="field"><span>Data e hora</span><input className="input" name="due_at" type="datetime-local" required /></label>
+              <label className="field"><span>Prioridade</span><select className="select" name="priority" defaultValue="normal">{PRIORITY_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+              <label className="field"><span>Observação</span><textarea className="textarea textarea-small" name="notes" /></label>
+              <SubmitButton pendingText="Cadastrando...">Adicionar prazo</SubmitButton>
+            </form>
+          </article>
+        </aside>
+      </section>
+
+      <section className="dashboard-grid">
+        <article className="card panel">
+          <div className="panel-header"><h2>Prazos e compromissos</h2><span>{deadlines?.length ?? 0} item(ns)</span></div>
+          {!deadlines?.length ? <div className="empty-state"><strong>Nenhum prazo cadastrado.</strong>Use o formulário ao lado para incluir o primeiro prazo.</div> : (
+            <div className="deadline-list">
+              {deadlines.map((deadline) => (
+                <div className={`deadline-row deadline-${deadline.status}`} key={deadline.id}>
+                  <div><strong>{deadline.title}</strong><span>{deadlineCategoryLabel(deadline.category)} · {priorityLabel(deadline.priority)}</span>{deadline.notes && <small>{deadline.notes}</small>}</div>
+                  <div className="deadline-date"><small>Data</small><b>{formatDateTime(deadline.due_at)}</b></div>
+                  {deadline.status === "pending" ? (
+                    <form action={completeDeadlineAction.bind(null, id, deadline.id)}><button className="button button-ghost button-small" type="submit">Concluir</button></form>
+                  ) : <span className="status">{deadline.status === "completed" ? "Concluído" : "Cancelado"}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </article>
+
+        <article className="card panel">
+          <div className="panel-header"><h2>Histórico recente</h2></div>
+          {!activities?.length ? <div className="empty-state"><strong>Nenhum histórico registrado.</strong></div> : (
+            <div className="activity-list">{activities.map((activity) => <div className="activity-item" key={activity.id}><i></i><div><strong>{activity.description}</strong><span>{formatDateTime(activity.created_at)}</span></div></div>)}</div>
+          )}
+        </article>
+      </section>
     </>
   );
 }

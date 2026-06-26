@@ -122,3 +122,69 @@ button { cursor: pointer; }
 .detail-item strong { margin-top:5px; }
 @media (max-width:1050px){.auth-layout{grid-template-columns:1fr}.auth-visual{display:none}.stats-grid{grid-template-columns:repeat(2,1fr)}.dashboard-grid{grid-template-columns:1fr}.library-grid{grid-template-columns:repeat(2,1fr)}}
 @media (max-width:760px){.app-shell{grid-template-columns:1fr}.sidebar{position:static;height:auto}.sidebar-nav{grid-template-columns:repeat(2,1fr)}.app-main{padding:22px 16px}.page-header{display:block}.page-header .button{margin-top:16px}.stats-grid,.form-grid,.library-grid,.detail-grid{grid-template-columns:1fr}.form-grid .full{grid-column:auto}.list-row{grid-template-columns:1fr}.auth-panel{padding:18px}.auth-card{padding:26px}.onboarding-card{padding:27px}.auth-points{grid-template-columns:1fr}}
+
+/* OCTA Perito v0.2 — processos e dashboard */
+.header-actions { display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
+.dashboard-recent { margin-top:16px; }
+.process-list-row { grid-template-columns:minmax(260px,1.35fr) minmax(190px,.8fr) minmax(150px,.55fr) minmax(150px,.55fr); }
+.filter-card { padding:18px 20px; margin-bottom:16px; }
+.filter-form { display:flex; align-items:flex-end; gap:12px; }
+.filter-grow { flex:1; }
+.filter-form > .field:not(.filter-grow) { min-width:230px; }
+.filter-button { min-width:100px; }
+.form-card-wide { max-width:1040px; }
+.form-section { margin:28px 0 16px; padding-top:25px; border-top:1px solid var(--line); }
+.form-section:first-of-type { margin-top:0; padding-top:0; border-top:0; }
+.form-section h2 { margin:0; font-size:1.08rem; }
+.form-section p { margin:6px 0 0; color:var(--muted); font-size:.84rem; }
+.process-summary-card { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; margin-bottom:16px; overflow:hidden; background:var(--line); }
+.process-summary-card > div { padding:20px; background:var(--surface); }
+.process-summary-card span,.process-summary-card strong { display:block; }
+.process-summary-card span { color:var(--muted); font-size:.74rem; }
+.process-summary-card strong { margin-top:7px; font-size:1.15rem; }
+.process-main-grid { align-items:start; }
+.process-side-stack { display:grid; gap:16px; }
+.status-form { display:grid; gap:12px; }
+.compact-form { gap:12px; }
+.textarea-small { min-height:78px; }
+.notes-box { margin-top:16px; padding:18px; border:1px solid var(--line); border-radius:12px; background:rgba(255,255,255,.018); }
+.notes-box span { color:var(--muted); font-size:.72rem; }
+.notes-box p { margin:7px 0 0; color:#cedae4; white-space:pre-wrap; }
+.deadline-list { display:grid; }
+.deadline-row { display:grid; grid-template-columns:minmax(220px,1fr) minmax(145px,.42fr) auto; gap:14px; align-items:center; padding:15px 0; border-top:1px solid var(--line); }
+.deadline-row:first-child { border-top:0; }
+.deadline-row strong,.deadline-row span,.deadline-row small { display:block; }
+.deadline-row span,.deadline-row small { margin-top:4px; color:var(--muted); font-size:.72rem; }
+.deadline-date small { color:var(--muted); font-size:.68rem; }
+.deadline-date b { display:block; margin-top:4px; font-size:.82rem; }
+.deadline-completed { opacity:.58; }
+.deadline-completed strong { text-decoration:line-through; }
+.priority { display:inline-flex!important; width:max-content; padding:5px 8px; border-radius:999px; text-transform:uppercase; font-size:.6rem!important; font-weight:900; letter-spacing:.04em; }
+.priority-low { color:#b9d6ff!important; background:rgba(90,146,255,.10); }
+.priority-normal { color:#bffff0!important; background:rgba(66,223,186,.10); }
+.priority-high { color:#ffe8a1!important; background:rgba(255,209,102,.11); }
+.priority-urgent { color:#ffd4d8!important; background:rgba(255,127,140,.12); }
+.button-small { min-height:34px; padding:0 11px; font-size:.72rem; }
+.activity-list { display:grid; }
+.activity-item { display:grid; grid-template-columns:10px 1fr; gap:11px; padding:13px 0; border-top:1px solid var(--line); }
+.activity-item:first-child { border-top:0; }
+.activity-item i { width:8px; height:8px; margin-top:6px; border-radius:50%; background:var(--green); box-shadow:0 0 0 4px rgba(66,223,186,.08); }
+.activity-item strong,.activity-item span { display:block; }
+.activity-item strong { font-size:.83rem; }
+.activity-item span { margin-top:4px; color:var(--muted); font-size:.7rem; }
+.status-awaiting_decision,.status-awaiting_deposit { color:#ffe7a3!important; background:rgba(255,209,102,.10); }
+.status-closed { color:#a7b5c1!important; background:rgba(167,181,193,.10); }
+.status-clarifications { color:#d8c7ff!important; background:rgba(165,119,255,.11); }
+
+@media (max-width:1050px){
+  .process-summary-card{grid-template-columns:repeat(2,1fr)}
+  .process-list-row{grid-template-columns:1.2fr .8fr .55fr}
+  .process-list-row > .status{grid-column:1/-1}
+}
+@media (max-width:760px){
+  .header-actions{justify-content:flex-start;margin-top:16px}
+  .filter-form{display:grid;grid-template-columns:1fr}
+  .filter-form > .field:not(.filter-grow){min-width:0}
+  .process-summary-card{grid-template-columns:1fr}
+  .deadline-row,.process-list-row{grid-template-columns:1fr}
+}
