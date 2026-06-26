@@ -1,6 +1,6 @@
 {
   "name": "octa-perito-app",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -9,8 +9,7 @@
     "lint": "eslint ."
   },
   "engines": {
-    "node": "22.x",
-    "npm": "10.9.2"
+    "node": "20.x"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.0",
@@ -30,6 +29,5 @@
     "eslint": "^9.0.0",
     "eslint-config-next": "16.2.9",
     "typescript": "^5.9.0"
-  },
-  "packageManager": "npm@10.9.2"
+  }
 }
