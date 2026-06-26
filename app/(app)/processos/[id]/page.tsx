@@ -27,10 +27,11 @@ export default async function ProcessDetailPage({ params, searchParams }: { para
   if (!organization) return null;
   const supabase = await createClient();
 
-  const [{ data: process }, { data: deadlines }, { data: activities }] = await Promise.all([
+  const [{ data: process }, { data: deadlines }, { data: activities }, { data: documents }] = await Promise.all([
     supabase.from("processes").select("*").eq("id", id).eq("organization_id", organization.id).maybeSingle(),
     supabase.from("process_deadlines").select("*").eq("process_id", id).eq("organization_id", organization.id).order("due_at", { ascending: true }),
     supabase.from("process_activities").select("id, activity_type, description, created_at").eq("process_id", id).eq("organization_id", organization.id).order("created_at", { ascending: false }).limit(12),
+    supabase.from("generated_documents").select("id,title,status,version,updated_at").eq("process_id", id).eq("organization_id", organization.id).order("updated_at", { ascending: false }),
   ]);
   if (!process) notFound();
 
@@ -60,7 +61,7 @@ export default async function ProcessDetailPage({ params, searchParams }: { para
     <>
       <header className="page-header">
         <div><p className="eyebrow">PROCESSO PERICIAL</p><h1>{process.process_number}</h1><p>{process.subject || "Objeto ainda não informado"}</p></div>
-        <div className="header-actions"><Link className="button button-secondary" href="/processos">Voltar</Link><Link className="button button-primary" href={`/processos/${id}/editar`}>Editar processo</Link></div>
+        <div className="header-actions"><Link className="button button-secondary" href="/processos">Voltar</Link><Link className="button button-secondary" href={`/documentos/novo?process=${id}`}>Gerar petição</Link><Link className="button button-primary" href={`/processos/${id}/editar`}>Editar processo</Link></div>
       </header>
 
       {query.error && <div className="notice notice-error">{query.error}</div>}
@@ -128,6 +129,11 @@ export default async function ProcessDetailPage({ params, searchParams }: { para
           )}
         </article>
       </section>
+      <section className="card panel" style={{ marginTop: 16 }}>
+        <div className="panel-header"><h2>Documentos do processo</h2><Link href={`/documentos/novo?process=${id}`}>Gerar documento</Link></div>
+        {!documents?.length ? <div className="empty-state"><strong>Nenhum documento gerado.</strong>Use a Biblioteca Técnica para criar a primeira petição.</div> : <div className="list">{documents.map((document) => <Link className="list-row document-process-row" href={`/documentos/${document.id}`} key={document.id}><div><strong>{document.title}</strong><span>Versão {document.version}</span></div><div><span>Status</span><strong>{document.status}</strong></div><div><span>Atualizado</span><strong>{formatDateTime(document.updated_at)}</strong></div></Link>)}</div>}
+      </section>
+
     </>
   );
 }

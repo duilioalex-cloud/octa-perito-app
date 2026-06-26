@@ -1,40 +1,21 @@
-# OCTA Perito App — MVP 0.2
+# OCTA Perito App v0.3
 
-Aplicação web da OCTA SYSTEMS para gestão de perícias judiciais, extrajudiciais e assistência técnica.
+Biblioteca Técnica e Gerador de Petições.
 
-## Entregas desta versão
+## Ordem de implantação
 
-- Dashboard com processos ativos, prazos vencidos, honorários e modelos.
-- Cadastro ampliado de processos.
-- Pesquisa e filtro por status.
-- Edição completa do processo.
-- Controle básico de honorários propostos, arbitrados, depositados e recebidos.
-- Cadastro e conclusão de prazos.
-- Histórico de atividades do processo.
-- Priorização e fluxo de status pericial.
-
-## Migração obrigatória
-
-Antes de publicar esta versão, execute no Supabase SQL Editor:
-
-```text
-supabase/migrations/002_process_management.sql
-```
-
-A migração amplia a tabela `processes` e cria:
-
-- `process_deadlines`
-- `process_activities`
-
-Ela também cria índices, gatilhos de atualização e políticas RLS.
-
-## Publicação
-
-1. Substitua os arquivos do repositório pelo conteúdo desta versão.
-2. Confirme o commit na branch principal.
+1. Execute `supabase/migrations/003_document_library.sql` no SQL Editor do Supabase, com a tradução automática do navegador desativada.
+2. Envie todo o conteúdo desta pasta ao repositório `octa-perito-app`.
 3. Aguarde a implantação automática da Vercel.
-4. Teste primeiro com dados fictícios.
+4. Acesse `/biblioteca`, selecione um modelo e gere um documento usando um processo fictício.
+5. Teste o salvamento, o histórico e a exportação `.docx`.
 
-## Pendência registrada
+## Entregas
 
-O redirecionamento de confirmação de e-mail do Supabase será ajustado antes do lançamento comercial.
+- 10 modelos OCTA iniciais;
+- modelos particulares e duplicação;
+- campos dinâmicos;
+- geração vinculada ao processo;
+- edição de rascunhos;
+- histórico de versões;
+- exportação Word nativa (`.docx`) sem dependência externa.

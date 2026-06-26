@@ -7,6 +7,7 @@ const navItems = [
   ["/dashboard", "Visão geral", "⌂"],
   ["/processos", "Processos", "▣"],
   ["/biblioteca", "Biblioteca técnica", "▤"],
+  ["/documentos", "Documentos", "▧"],
   ["/honorarios", "Honorários", "◇"],
   ["/configuracoes", "Configurações", "⚙"],
 ] as const;

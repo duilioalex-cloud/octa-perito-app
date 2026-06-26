@@ -1,0 +1,14 @@
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
+import { getCurrentOrganization } from "@/lib/current-organization";
+import { documentStatusLabel } from "@/lib/document-options";
+import { formatDateTime } from "@/lib/process-options";
+
+export const metadata = { title: "Documentos" };
+export default async function DocumentsPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; error?: string }> }) {
+  const query = await searchParams; const organization = await getCurrentOrganization(); if (!organization) return null; const supabase = await createClient();
+  let request = supabase.from("generated_documents").select("id,title,status,version,updated_at,processes(process_number)").eq("organization_id", organization.id).order("updated_at", { ascending: false });
+  if (query.q) request = request.ilike("title", `%${query.q}%`); if (query.status) request = request.eq("status", query.status);
+  const { data: documents } = await request;
+  return <><header className="page-header"><div><p className="eyebrow">PRODUÇÃO DOCUMENTAL</p><h1>Documentos gerados</h1><p>Rascunhos, documentos revisados, versões finais e histórico.</p></div><Link className="button button-primary" href="/documentos/novo">+ Gerar documento</Link></header>{query.error && <div className="notice notice-error">{query.error}</div>}<section className="card filter-card"><form className="filter-form"><label className="field filter-grow"><span>Pesquisar</span><input className="input" name="q" defaultValue={query.q || ""} /></label><label className="field"><span>Status</span><select className="select" name="status" defaultValue={query.status || ""}><option value="">Todos</option><option value="draft">Rascunho</option><option value="reviewed">Revisado</option><option value="final">Final</option><option value="archived">Arquivado</option></select></label><button className="button button-secondary">Filtrar</button></form></section><section className="card panel"><div className="panel-header"><h2>Documentos</h2><span>{documents?.length || 0} item(ns)</span></div>{!documents?.length ? <div className="empty-state"><strong>Nenhum documento gerado.</strong>Escolha um modelo da biblioteca para começar.</div> : <div className="list">{documents.map((doc) => { const proc = Array.isArray(doc.processes) ? doc.processes[0] : doc.processes; return <Link className="list-row document-list-row" href={`/documentos/${doc.id}`} key={doc.id}><div><strong>{doc.title}</strong><span>Processo {proc?.process_number || "não identificado"}</span></div><div><span>Status</span><strong>{documentStatusLabel(doc.status)}</strong></div><div><span>Versão</span><strong>v{doc.version}</strong></div><div><span>Atualizado</span><strong>{formatDateTime(doc.updated_at)}</strong></div></Link>; })}</div>}</section></>;
+}

@@ -188,3 +188,37 @@ button { cursor: pointer; }
   .process-summary-card{grid-template-columns:1fr}
   .deadline-row,.process-list-row{grid-template-columns:1fr}
 }
+
+
+/* OCTA Perito v0.3 — biblioteca e gerador documental */
+.library-link { display:block; transition:.18s ease; }
+.library-link:hover { transform:translateY(-2px); border-color:rgba(66,223,186,.38); }
+.library-card-top { display:flex; justify-content:space-between; gap:10px; align-items:center; }
+.source-badge { padding:4px 7px; border-radius:999px; color:#b8c7d4; background:rgba(255,255,255,.055); font-size:.58rem; font-weight:900; letter-spacing:.05em; }
+.source-octa { color:#bffff0; background:rgba(66,223,186,.11); }
+.library-card footer { display:flex; justify-content:space-between; gap:10px; margin-top:22px; color:var(--muted); font-size:.7rem; }
+.template-detail-grid { display:grid; grid-template-columns:minmax(0,1.45fr) minmax(300px,.55fr); gap:16px; align-items:start; }
+.template-preview { min-height:520px; margin:0; white-space:pre-wrap; word-break:break-word; font:400 .88rem/1.75 Arial,sans-serif; color:#d6e1e9; }
+.detail-grid-single { grid-template-columns:1fr; }
+.variable-chips { display:flex; flex-wrap:wrap; gap:7px; }
+.variable-chips span { padding:6px 9px; border:1px solid var(--line); border-radius:999px; color:#b9cad7; background:rgba(255,255,255,.025); font-size:.66rem; }
+.reference-list { margin:0; padding-left:18px; color:var(--muted); font-size:.8rem; line-height:1.55; }
+.generator-layout { display:grid; grid-template-columns:minmax(310px,.62fr) minmax(0,1.38fr); gap:16px; align-items:start; }
+.generator-fields { position:sticky; top:20px; max-height:calc(100vh - 40px); overflow:auto; }
+.variable-form { display:grid; gap:12px; margin-bottom:14px; }
+.generator-editor { min-width:0; }
+.document-editor { width:100%; min-height:680px; resize:vertical; padding:22px; border:1px solid var(--line); border-radius:12px; outline:0; color:#e4edf4; background:#071523; font:400 .88rem/1.65 Arial,sans-serif; }
+.document-editor:focus { border-color:rgba(66,223,186,.58); box-shadow:0 0 0 3px rgba(66,223,186,.08); }
+.document-editor-medium { min-height:520px; }
+.generator-actions { display:flex; justify-content:space-between; align-items:center; gap:15px; margin-top:16px; }
+.generator-actions span { color:var(--muted); font-size:.72rem; }
+.document-list-row { grid-template-columns:minmax(260px,1.2fr) minmax(120px,.35fr) minmax(90px,.25fr) minmax(160px,.4fr); }
+.document-detail-grid { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(260px,.45fr); gap:16px; align-items:start; }
+.read-only-field { min-height:45px; display:flex; align-items:center; padding:0 13px; border:1px solid var(--line); border-radius:10px; color:var(--muted); background:rgba(255,255,255,.02); }
+.version-list { display:grid; margin-bottom:18px; }
+.version-item { display:flex; justify-content:space-between; gap:10px; padding:12px 0; border-top:1px solid var(--line); }
+.version-item:first-child { border-top:0; }
+.version-item span { color:var(--muted); font-size:.7rem; }
+.document-process-row { grid-template-columns:minmax(260px,1fr) minmax(130px,.3fr) minmax(170px,.4fr); }
+@media (max-width:1050px){.template-detail-grid,.generator-layout,.document-detail-grid{grid-template-columns:1fr}.generator-fields{position:static;max-height:none}.document-list-row{grid-template-columns:1fr .4fr .25fr}.document-list-row>div:last-child{grid-column:1/-1}}
+@media (max-width:760px){.generator-actions{display:grid}.document-list-row,.document-process-row{grid-template-columns:1fr}.template-preview{min-height:380px}.document-editor{min-height:500px}}

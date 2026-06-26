@@ -1,0 +1,16 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { duplicateTemplateAction } from "@/app/actions/templates";
+import { SubmitButton } from "@/components/submit-button";
+import { templateBody, templateCategoryLabel, variableLabel } from "@/lib/document-options";
+
+export const metadata = { title: "Modelo técnico" };
+export default async function TemplatePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ success?: string; error?: string }> }) {
+  const { id } = await params; const query = await searchParams; const supabase = await createClient();
+  const { data: template } = await supabase.from("templates").select("*").eq("id", id).maybeSingle();
+  if (!template) notFound();
+  const duplicateAction = duplicateTemplateAction.bind(null, id);
+  const body = templateBody(template.content);
+  return <><header className="page-header"><div><p className="eyebrow">{template.is_octa_model ? "MODELO OFICIAL OCTA" : "MODELO PARTICULAR"}</p><h1>{template.title}</h1><p>{template.description || "Modelo técnico estruturado."}</p></div><div className="header-actions"><Link className="button button-secondary" href="/biblioteca">Voltar</Link>{!template.is_octa_model && <Link className="button button-secondary" href={`/biblioteca/${id}/editar`}>Editar</Link>}<Link className="button button-primary" href={`/documentos/novo?template=${id}`}>Usar modelo</Link></div></header>{query.success && <div className="notice notice-success">{query.success}</div>}{query.error && <div className="notice notice-error">{query.error}</div>}<section className="template-detail-grid"><article className="card panel"><div className="panel-header"><h2>Conteúdo do modelo</h2><span>{templateCategoryLabel(template.category)} · v{template.version}</span></div><pre className="template-preview">{body}</pre></article><aside className="process-side-stack"><article className="card panel"><div className="panel-header"><h2>Informações</h2></div><div className="detail-grid detail-grid-single"><div className="detail-item"><span>Especialidade</span><strong>{template.specialty || "Geral"}</strong></div><div className="detail-item"><span>Origem</span><strong>{template.is_octa_model ? "Biblioteca OCTA" : "Seu escritório"}</strong></div><div className="detail-item"><span>Última revisão</span><strong>{template.revision_date || "Não informada"}</strong></div></div></article><article className="card panel"><div className="panel-header"><h2>Campos dinâmicos</h2><span>{template.variables?.length || 0}</span></div><div className="variable-chips">{(template.variables || []).map((variable: string) => <span key={variable}>{variableLabel(variable)}</span>)}</div></article>{template.legal_basis?.length > 0 && <article className="card panel"><div className="panel-header"><h2>Referências</h2></div><ul className="reference-list">{template.legal_basis.map((item: string) => <li key={item}>{item}</li>)}</ul></article>}{template.is_octa_model && <form action={duplicateAction}><SubmitButton className="button button-secondary button-full" pendingText="Duplicando...">Duplicar para meus modelos</SubmitButton></form>}</aside></section></>;
+}
