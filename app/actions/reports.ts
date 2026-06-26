@@ -80,6 +80,46 @@ export async function createExpertReportAction(formData: FormData) {
   redirect(reportPath(data.id, "Laudo criado. Os capítulos do modelo foram carregados automaticamente."));
 }
 
+export async function deleteExpertReportAction(reportId: string) {
+  const { organization, supabase, report } = await requireReport(reportId);
+  if (!["owner", "admin"].includes(organization.role)) {
+    redirect(reportPath(reportId, "Somente proprietários e administradores podem excluir laudos.", "error"));
+  }
+
+  const { data: attachments } = await supabase
+    .from("expert_report_attachments")
+    .select("storage_bucket,storage_path")
+    .eq("report_id", reportId);
+
+  const { data: deletedReport, error } = await supabase
+    .from("expert_reports")
+    .delete()
+    .eq("id", reportId)
+    .eq("organization_id", report.organization_id)
+    .select("id")
+    .maybeSingle();
+
+  if (error || !deletedReport) {
+    redirect(reportPath(reportId, error?.message || "Você não possui permissão para excluir este laudo.", "error"));
+  }
+
+  const filesByBucket = new Map<string, string[]>();
+  for (const attachment of attachments || []) {
+    if (!attachment.storage_bucket || !attachment.storage_path) continue;
+    const paths = filesByBucket.get(attachment.storage_bucket) || [];
+    paths.push(attachment.storage_path);
+    filesByBucket.set(attachment.storage_bucket, paths);
+  }
+
+  for (const [bucket, paths] of filesByBucket) {
+    await supabase.storage.from(bucket).remove(paths);
+  }
+
+  revalidatePath("/laudos");
+  revalidatePath(`/processos/${report.process_id}`);
+  redirect(`/laudos?success=${encodeURIComponent("Laudo excluído definitivamente.")}`);
+}
+
 export async function updateExpertReportAction(reportId: string, formData: FormData) {
   const { supabase, report } = await requireReport(reportId);
   const title = text(formData, "title");

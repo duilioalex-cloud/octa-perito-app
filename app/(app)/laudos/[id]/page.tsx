@@ -7,6 +7,7 @@ import {
   createReportVersionAction,
   createSourceAction,
   deleteEquipmentAction,
+  deleteExpertReportAction,
   deleteQuestionAction,
   deleteReportAttachmentAction,
   deleteSourceAction,
@@ -17,6 +18,7 @@ import {
   updateReportSectionAction,
   uploadReportAttachmentAction,
 } from "@/app/actions/reports";
+import { DeleteReportButton } from "@/components/delete-report-button";
 import { SubmitButton } from "@/components/submit-button";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentOrganization } from "@/lib/current-organization";
@@ -99,12 +101,13 @@ export default async function ReportBuilderPage({ params, searchParams }: { para
   const createEquipment = createEquipmentAction.bind(null, id);
   const uploadAttachment = uploadReportAttachmentAction.bind(null, id);
   const createVersion = createReportVersionAction.bind(null, id);
+  const deleteReport = deleteExpertReportAction.bind(null, id);
 
   return (
     <>
       <header className="page-header">
         <div><p className="eyebrow">{reportStatusLabel(report.status).toUpperCase()} · VERSÃO {report.current_version || 0}</p><h1>{report.title}</h1><p>{process?.process_number || "Processo não identificado"} · {reportType?.name || "Tipo não identificado"}</p></div>
-        <div className="header-actions"><Link className="button button-secondary" href="/laudos">Voltar</Link>{process && <Link className="button button-secondary" href={`/processos/${process.id}`}>Abrir processo</Link>}<a className="button button-primary" href={`/api/laudos/${id}/word`}>Exportar Word</a></div>
+        <div className="header-actions"><Link className="button button-secondary" href="/laudos">Voltar</Link>{process && <Link className="button button-secondary" href={`/processos/${process.id}`}>Abrir processo</Link>}<a className="button button-primary" href={`/api/laudos/${id}/word`}>Exportar Word</a>{["owner", "admin"].includes(organization.role) && <DeleteReportButton action={deleteReport} reportTitle={report.title} />}</div>
       </header>
 
       {query.success && <div className="notice notice-success">{query.success}</div>}

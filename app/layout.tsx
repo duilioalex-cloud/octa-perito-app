@@ -8,7 +8,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" style={{ colorScheme: "dark" }}>
+      <head><meta name="color-scheme" content="dark" /></head>
       <body>{children}</body>
     </html>
   );

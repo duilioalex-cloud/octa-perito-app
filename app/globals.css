@@ -46,8 +46,13 @@ button { cursor: pointer; }
 .field span { color: #c0cfdb; font-size: .8rem; font-weight: 700; }
 .input, .select, .textarea { width:100%; border:1px solid var(--line); border-radius: 11px; background: rgba(255,255,255,.035); color: var(--text); outline:none; }
 .input, .select { height: 48px; padding: 0 14px; }
+.select { color-scheme:dark; border-color:rgba(128,177,216,.30); background-color:#081827; color:#f3f9fd; font-weight:680; }
+.select:hover { border-color:rgba(66,223,186,.50); background-color:#0b1e31; }
+.select option { color:#f3f9fd; background:#0b1c2d; font-weight:620; }
+.select option:checked { color:#ffffff; background:#15564f; }
 .textarea { min-height: 110px; padding: 13px 14px; resize: vertical; }
 .input:focus,.select:focus,.textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(66,223,186,.08); }
+.select:focus { background-color:#0b1e31; }
 .button { min-height: 46px; display:inline-flex; align-items:center; justify-content:center; border:0; border-radius:11px; padding:0 18px; font-weight:800; transition:.18s ease; }
 .button:hover { transform: translateY(-1px); }
 .button:disabled { opacity:.55; cursor:not-allowed; transform:none; }
@@ -307,3 +312,121 @@ button { cursor: pointer; }
 @media (max-width:1200px){.report-builder-layout{grid-template-columns:210px minmax(0,1fr)}.report-list-row{grid-template-columns:1fr .85fr .35fr}.report-list-row>div:last-child{grid-column:1/-1}}
 @media (max-width:900px){.report-builder-layout{grid-template-columns:1fr}.report-builder-nav{position:static;max-height:none}.report-builder-nav .report-nav-group{display:grid;grid-template-columns:repeat(2,1fr)}.attachment-grid{grid-template-columns:1fr}.technical-block-inserter{grid-template-columns:1fr}.report-process-facts{grid-template-columns:1fr}}
 @media (max-width:760px){.report-list-row{grid-template-columns:1fr}.report-section-header,.report-subcard-header,.report-simple-row{display:grid}.report-section-controls{justify-content:flex-start}.version-create-form{display:grid}.report-builder-nav .report-nav-group{grid-template-columns:1fr}}
+
+/* OCTA Perito v0.4.1 — exclusão segura e contraste dos seletores */
+.delete-report-form { margin:0; display:inline-flex; }
+.header-actions .button-danger { min-height:46px; }
+@media (max-width:760px){.delete-report-form,.delete-report-form .button-danger{width:100%}}
+
+/* OCTA Perito v0.4.2 — exclusão em listas e menus suspensos legíveis */
+html,
+body,
+select,
+option,
+optgroup {
+  color-scheme: dark !important;
+}
+
+select,
+.select {
+  background-color: #081827 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff;
+  forced-color-adjust: none;
+}
+
+select option,
+select optgroup,
+.select option,
+.select optgroup {
+  background-color: #071827 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff;
+}
+
+select option:checked,
+.select option:checked {
+  background-color: #176257 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff;
+}
+
+select option:disabled,
+.select option:disabled {
+  color: #71879a !important;
+  -webkit-text-fill-color: #71879a;
+}
+
+.entity-list {
+  display: grid;
+}
+
+.entity-list-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 15px 0;
+  border-top: 1px solid var(--line);
+}
+
+.entity-list-item:first-child {
+  border-top: 0;
+}
+
+.entity-list-link {
+  display: grid;
+  min-width: 0;
+  gap: 16px;
+  align-items: center;
+  border-radius: 10px;
+  transition: background-color .16s ease, transform .16s ease;
+}
+
+.entity-list-link:hover {
+  background: rgba(255,255,255,.025);
+  transform: translateX(2px);
+}
+
+.entity-list-link strong,
+.entity-list-link span,
+.entity-list-link small {
+  display: block;
+}
+
+.entity-list-link span,
+.entity-list-link small {
+  color: var(--muted);
+  font-size: .78rem;
+}
+
+.danger-action-form {
+  display: inline-flex;
+  margin: 0;
+}
+
+.entity-list-item > .danger-action-form {
+  justify-self: end;
+}
+
+.header-actions .danger-action-form .button-danger {
+  min-height: 46px;
+}
+
+@media (max-width: 900px) {
+  .entity-list-item {
+    grid-template-columns: 1fr;
+  }
+
+  .entity-list-item > .danger-action-form,
+  .entity-list-item > .danger-action-form .button-danger {
+    width: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  .danger-action-form,
+  .danger-action-form .button-danger {
+    width: 100%;
+  }
+}

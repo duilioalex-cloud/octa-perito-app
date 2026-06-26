@@ -1,8 +1,8 @@
-# OCTA Perito v0.4 — Construtor de Laudos
+# OCTA Perito v0.4.2 — Construtor de Laudos
 
 Aplicação profissional para gestão de processos periciais, geração de petições e elaboração modular de laudos.
 
-## Entregas desta versão
+## Entregas principais
 
 - módulo **Laudos** no menu principal;
 - criação de laudo vinculado a processo;
@@ -61,3 +61,8 @@ NEXT_PUBLIC_SITE_URL=
 ## Segurança documental
 
 O sistema não substitui a revisão profissional. Campos incompletos, fundamentação, medições, conclusões, referências normativas e anexos devem ser conferidos antes da assinatura ou protocolo.
+
+
+## Atualização v0.4.2
+
+Consulte `README_V0.4.2.md` para os ajustes de exclusão de laudos/processos e correção global dos menus suspensos.

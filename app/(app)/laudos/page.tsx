@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { deleteExpertReportAction } from "@/app/actions/reports";
+import { DeleteReportButton } from "@/components/delete-report-button";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentOrganization } from "@/lib/current-organization";
 import { formatDateTime } from "@/lib/process-options";
@@ -6,7 +8,7 @@ import { REPORT_STATUS_OPTIONS, reportStatusLabel } from "@/lib/report-options";
 
 export const metadata = { title: "Laudos" };
 
-export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; type?: string; error?: string }> }) {
+export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; type?: string; error?: string; success?: string }> }) {
   const query = await searchParams;
   const organization = await getCurrentOrganization();
   if (!organization) return null;
@@ -32,14 +34,16 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const draftCount = (reports || []).filter((item) => item.status === "draft").length;
   const reviewCount = (reports || []).filter((item) => item.status === "in_review").length;
   const finalCount = (reports || []).filter((item) => ["final", "filed"].includes(item.status)).length;
+  const canDelete = ["owner", "admin"].includes(organization.role);
 
   return (
     <>
       <header className="page-header">
         <div><p className="eyebrow">CONSTRUTOR TÉCNICO</p><h1>Laudos periciais</h1><p>Capítulos modulares, quesitos, anexos, fontes e controle de versões.</p></div>
-        <div className="header-actions"><Link className="button button-secondary" href="/biblioteca">Biblioteca técnica</Link><Link className="button button-primary" href="/laudos/novo">+ Novo laudo</Link></div>
+        <div className="header-actions"><Link className="button button-primary" href="/laudos/novo">+ Novo laudo</Link></div>
       </header>
 
+      {query.success && <div className="notice notice-success">{query.success}</div>}
       {query.error && <div className="notice notice-error">{query.error}</div>}
 
       <section className="card process-summary-card report-summary-card">
@@ -63,17 +67,21 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
       ) : (
         <section className="card panel">
           <div className="panel-header"><h2>Laudos cadastrados</h2><span>{reports.length} registro(s)</span></div>
-          <div className="list-stack">
+          <div className="entity-list">
             {reports.map((report) => {
               const process = processMap.get(report.process_id);
               const type = typeMap.get(report.report_type_id);
+              const deleteAction = deleteExpertReportAction.bind(null, report.id);
               return (
-                <Link className="list-row report-list-row" href={`/laudos/${report.id}`} key={report.id}>
-                  <div><strong>{report.title}</strong><span>{type?.name || "Tipo não identificado"} · {type?.specialty || "Especialidade não informada"}</span></div>
-                  <div><strong>{process?.process_number || "Processo não identificado"}</strong><span>{process?.subject || "Objeto não informado"}</span></div>
-                  <span className={`status status-${report.status}`}>{reportStatusLabel(report.status)}</span>
-                  <div><strong>v{report.current_version || 0}</strong><span>{formatDateTime(report.updated_at)}</span></div>
-                </Link>
+                <article className="entity-list-item" key={report.id}>
+                  <Link className="entity-list-link report-list-row" href={`/laudos/${report.id}`}>
+                    <div><strong>{report.title}</strong><span>{type?.name || "Tipo não identificado"} · {type?.specialty || "Especialidade não informada"}</span></div>
+                    <div><strong>{process?.process_number || "Processo não identificado"}</strong><span>{process?.subject || "Objeto não informado"}</span></div>
+                    <span className={`status status-${report.status}`}>{reportStatusLabel(report.status)}</span>
+                    <div><strong>v{report.current_version || 0}</strong><span>{formatDateTime(report.updated_at)}</span></div>
+                  </Link>
+                  {canDelete && <DeleteReportButton action={deleteAction} reportTitle={report.title} compact />}
+                </article>
               );
             })}
           </div>

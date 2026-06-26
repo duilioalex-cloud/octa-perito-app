@@ -40,6 +40,76 @@ async function addActivity(
   });
 }
 
+export async function deleteProcessAction(processId: string) {
+  const organization = await getCurrentOrganization();
+  if (!organization) redirect("/onboarding");
+  if (!["owner", "admin"].includes(organization.role)) {
+    redirect(`/processos/${processId}?error=${encodeURIComponent("Somente proprietários e administradores podem excluir processos.")}`);
+  }
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: process } = await supabase
+    .from("processes")
+    .select("id,process_number")
+    .eq("id", processId)
+    .eq("organization_id", organization.id)
+    .maybeSingle();
+
+  if (!process) {
+    redirect(`/processos?error=${encodeURIComponent("Processo não encontrado ou sem permissão de acesso.")}`);
+  }
+
+  const { data: reports } = await supabase
+    .from("expert_reports")
+    .select("id")
+    .eq("process_id", processId)
+    .eq("organization_id", organization.id);
+
+  const reportIds = (reports || []).map((report) => report.id);
+  const attachments = reportIds.length
+    ? (
+        await supabase
+          .from("expert_report_attachments")
+          .select("storage_bucket,storage_path")
+          .in("report_id", reportIds)
+      ).data || []
+    : [];
+
+  const { data: deletedProcess, error } = await supabase
+    .from("processes")
+    .delete()
+    .eq("id", processId)
+    .eq("organization_id", organization.id)
+    .select("id")
+    .maybeSingle();
+
+  if (error || !deletedProcess) {
+    redirect(`/processos/${processId}?error=${encodeURIComponent(error?.message || "Não foi possível excluir o processo.")}`);
+  }
+
+  const filesByBucket = new Map<string, string[]>();
+  for (const attachment of attachments) {
+    if (!attachment.storage_bucket || !attachment.storage_path) continue;
+    const paths = filesByBucket.get(attachment.storage_bucket) || [];
+    paths.push(attachment.storage_path);
+    filesByBucket.set(attachment.storage_bucket, paths);
+  }
+
+  for (const [bucket, paths] of filesByBucket) {
+    await supabase.storage.from(bucket).remove(paths);
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/processos");
+  revalidatePath("/laudos");
+  revalidatePath("/documentos");
+  revalidatePath("/honorarios");
+  redirect(`/processos?success=${encodeURIComponent(`Processo ${process.process_number} excluído definitivamente.`)}`);
+}
+
 export async function createProcessAction(formData: FormData) {
   const organization = await getCurrentOrganization();
   if (!organization) redirect("/onboarding");

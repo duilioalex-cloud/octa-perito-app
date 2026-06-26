@@ -4,7 +4,10 @@ import { SubmitButton } from "@/components/submit-button";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentOrganization } from "@/lib/current-organization";
 import { completeDeadlineAction, createDeadlineAction } from "@/app/actions/deadlines";
-import { updateProcessStatusAction } from "@/app/actions/processes";
+import { deleteProcessAction, updateProcessStatusAction } from "@/app/actions/processes";
+import { deleteExpertReportAction } from "@/app/actions/reports";
+import { DeleteProcessButton } from "@/components/delete-process-button";
+import { DeleteReportButton } from "@/components/delete-report-button";
 import {
   DEADLINE_CATEGORY_OPTIONS,
   deadlineCategoryLabel,
@@ -57,12 +60,14 @@ export default async function ProcessDetailPage({ params, searchParams }: { para
 
   const statusAction = updateProcessStatusAction.bind(null, id);
   const deadlineAction = createDeadlineAction.bind(null, id);
+  const deleteProcess = deleteProcessAction.bind(null, id);
+  const canDelete = ["owner", "admin"].includes(organization.role);
 
   return (
     <>
       <header className="page-header">
         <div><p className="eyebrow">PROCESSO PERICIAL</p><h1>{process.process_number}</h1><p>{process.subject || "Objeto ainda não informado"}</p></div>
-        <div className="header-actions"><Link className="button button-secondary" href="/processos">Voltar</Link><Link className="button button-secondary" href={`/documentos/novo?process=${id}`}>Gerar petição</Link><Link className="button button-secondary" href={`/laudos/novo?process=${id}`}>Criar laudo</Link><Link className="button button-primary" href={`/processos/${id}/editar`}>Editar processo</Link></div>
+        <div className="header-actions"><Link className="button button-secondary" href="/processos">Voltar</Link><Link className="button button-secondary" href={`/documentos/novo?process=${id}`}>Gerar petição</Link><Link className="button button-secondary" href={`/laudos/novo?process=${id}`}>Criar laudo</Link><Link className="button button-primary" href={`/processos/${id}/editar`}>Editar processo</Link>{canDelete && <DeleteProcessButton action={deleteProcess} processNumber={process.process_number} />}</div>
       </header>
 
       {query.error && <div className="notice notice-error">{query.error}</div>}
@@ -137,7 +142,25 @@ export default async function ProcessDetailPage({ params, searchParams }: { para
 
       <section className="card panel" style={{ marginTop: 16 }}>
         <div className="panel-header"><h2>Laudos periciais</h2><Link href={`/laudos/novo?process=${id}`}>Criar laudo</Link></div>
-        {!reports?.length ? <div className="empty-state"><strong>Nenhum laudo criado.</strong>Inicie um laudo modular vinculado a este processo.</div> : <div className="list">{reports.map((report) => <Link className="list-row document-process-row" href={`/laudos/${report.id}`} key={report.id}><div><strong>{report.title}</strong><span>Versão {report.current_version || 0}</span></div><div><span>Status</span><strong>{report.status}</strong></div><div><span>Atualizado</span><strong>{formatDateTime(report.updated_at)}</strong></div></Link>)}</div>}
+        {!reports?.length ? (
+          <div className="empty-state"><strong>Nenhum laudo criado.</strong>Inicie um laudo modular vinculado a este processo.</div>
+        ) : (
+          <div className="entity-list">
+            {reports.map((report) => {
+              const deleteReport = deleteExpertReportAction.bind(null, report.id);
+              return (
+                <article className="entity-list-item" key={report.id}>
+                  <Link className="entity-list-link document-process-row" href={`/laudos/${report.id}`}>
+                    <div><strong>{report.title}</strong><span>Versão {report.current_version || 0}</span></div>
+                    <div><span>Status</span><strong>{report.status}</strong></div>
+                    <div><span>Atualizado</span><strong>{formatDateTime(report.updated_at)}</strong></div>
+                  </Link>
+                  {canDelete && <DeleteReportButton action={deleteReport} reportTitle={report.title} compact />}
+                </article>
+              );
+            })}
+          </div>
+        )}
       </section>
 
     </>
