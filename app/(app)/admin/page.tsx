@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { updateOrganizationBillingStatusAction } from "@/app/actions/admin";
+import { processPaidCheckoutSessionAction, updateOrganizationBillingStatusAction } from "@/app/actions/admin";
 import { billingStatusLabels, normalizeBillingStatus, type BillingStatus } from "@/lib/billing";
 import { requirePlatformAdmin } from "@/lib/platform-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -68,6 +68,15 @@ type SaleRow = {
   created_at: string;
 };
 
+type EventRow = {
+  id: string;
+  organization_id: string | null;
+  event_type: string;
+  provider: string | null;
+  provider_event_id: string | null;
+  created_at: string;
+};
+
 const saleStatusLabels: Record<string, string> = {
   pending: "Pendente",
   checkout_created: "Checkout criado",
@@ -109,7 +118,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
   const organizations = (organizationsData ?? []) as OrganizationRow[];
   const ownerIds = Array.from(new Set(organizations.map((org) => org.owner_id).filter(Boolean))) as string[];
 
-  const [profilesResult, subscriptionsResult, paymentsResult, membersResult, salesResult] = await Promise.all([
+  const [profilesResult, subscriptionsResult, paymentsResult, membersResult, salesResult, eventsResult] = await Promise.all([
     ownerIds.length
       ? admin.from("profiles").select("id,full_name,email").in("id", ownerIds)
       : Promise.resolve({ data: [] as ProfileRow[], error: null }),
@@ -124,6 +133,11 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
       .select("id,status,buyer_name,buyer_email,organization_name,plan_code,amount_cents,checkout_url,organization_id,paid_at,failed_at,created_at")
       .order("created_at", { ascending: false })
       .limit(20),
+    admin
+      .from("subscription_events")
+      .select("id,organization_id,event_type,provider,provider_event_id,created_at")
+      .order("created_at", { ascending: false })
+      .limit(12),
   ]);
 
   const profiles = (profilesResult.data ?? []) as ProfileRow[];
@@ -131,6 +145,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
   const payments = (paymentsResult.data ?? []) as PaymentRow[];
   const members = (membersResult.data ?? []) as MemberRow[];
   const sales = (salesResult.data ?? []) as SaleRow[];
+  const events = (eventsResult.data ?? []) as EventRow[];
 
   const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
   const organizationById = new Map(organizations.map((organization) => [organization.id, organization]));
@@ -161,7 +176,8 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
     subscriptionsResult.error?.message ||
     paymentsResult.error?.message ||
     membersResult.error?.message ||
-    salesResult.error?.message;
+    salesResult.error?.message ||
+    eventsResult.error?.message;
 
   return (
     <section className="page-section admin-page">
@@ -307,6 +323,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
                 <th>Plano</th>
                 <th>Data</th>
                 <th>Checkout</th>
+                <th>Acao</th>
               </tr>
             </thead>
             <tbody>
@@ -341,15 +358,75 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
                         "-"
                       )}
                     </td>
+                    <td>
+                      {sale.status !== "provisioned" ? (
+                        <form action={processPaidCheckoutSessionAction}>
+                          <input type="hidden" name="sale_id" value={sale.id} />
+                          <button className="button button-primary button-small" type="submit">Processar pago</button>
+                        </form>
+                      ) : (
+                        <span className="admin-client-meta">Concluido</span>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
               {!sales.length && (
                 <tr>
-                  <td colSpan={6}>
+                  <td colSpan={7}>
                     <div className="empty-state">
                       <strong>Nenhuma compra registrada</strong>
                       <span>As vendas criadas pelo endpoint de checkout aparecerao aqui.</span>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="card panel admin-control-panel">
+        <div className="panel-header">
+          <div>
+            <h2>Eventos recentes</h2>
+            <p>Ultimos webhooks e acoes manuais registradas no controle de assinaturas.</p>
+          </div>
+        </div>
+
+        <div className="responsive-table admin-sales-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Evento</th>
+                <th>Cliente</th>
+                <th>Gateway</th>
+                <th>Referencia</th>
+                <th>Data</th>
+              </tr>
+            </thead>
+            <tbody>
+              {events.map((event) => {
+                const organization = event.organization_id ? organizationById.get(event.organization_id) : null;
+                return (
+                  <tr key={event.id}>
+                    <td><strong className="admin-client-name">{event.event_type}</strong></td>
+                    <td>
+                      <strong className="admin-client-owner">{organization?.name || "Nao vinculado"}</strong>
+                      <span className="admin-client-meta">{event.organization_id || "-"}</span>
+                    </td>
+                    <td><span className="admin-client-meta">{event.provider || "manual"}</span></td>
+                    <td><span className="admin-client-meta">{event.provider_event_id || "-"}</span></td>
+                    <td><strong className="admin-client-owner">{formatDate(event.created_at)}</strong></td>
+                  </tr>
+                );
+              })}
+              {!events.length && (
+                <tr>
+                  <td colSpan={5}>
+                    <div className="empty-state">
+                      <strong>Nenhum evento registrado</strong>
+                      <span>Webhooks e acoes administrativas aparecerao aqui.</span>
                     </div>
                   </td>
                 </tr>

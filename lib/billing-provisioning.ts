@@ -28,7 +28,9 @@ type WebhookIds = {
   eventType: string;
   externalId: string | null;
   checkoutId: string | null;
+  checkoutUrl: string | null;
   customerId: string | null;
+  customerEmail: string | null;
   subscriptionId: string | null;
   paymentId: string | null;
   amountCents: number | null;
@@ -79,18 +81,23 @@ export function extractAbacatePayWebhookIds(payload: unknown): WebhookIds {
   const data = asRecord(root.data);
   const checkout = asRecord(data.checkout);
   const customer = asRecord(data.customer);
+  const checkoutCustomer = asRecord(checkout.customer);
   const subscription = asRecord(data.subscription);
   const payment = asRecord(data.payment);
+  const billing = asRecord(data.billing);
+  const charge = asRecord(data.charge);
 
   return {
     eventId: readString(root.id, data.id, root.eventId),
     eventType: readString(root.event, root.type, data.event, data.type) || "unknown",
-    externalId: readString(root.externalId, data.externalId, checkout.externalId, payment.externalId, subscription.externalId),
-    checkoutId: readString(checkout.id, data.checkoutId, payment.checkoutId),
-    customerId: readString(customer.id, data.customerId, subscription.customerId, payment.customerId),
-    subscriptionId: readString(subscription.id, data.subscriptionId, payment.subscriptionId),
-    paymentId: readString(payment.id, data.paymentId),
-    amountCents: readNumber(payment.amount, data.amount, subscription.amount),
+    externalId: readString(root.externalId, data.externalId, checkout.externalId, payment.externalId, subscription.externalId, billing.externalId, charge.externalId),
+    checkoutId: readString(checkout.id, data.checkoutId, payment.checkoutId, billing.id, charge.id),
+    checkoutUrl: readString(checkout.url, checkout.checkoutUrl, data.checkoutUrl, data.url, payment.checkoutUrl, billing.url, charge.url),
+    customerId: readString(customer.id, checkoutCustomer.id, data.customerId, subscription.customerId, payment.customerId, billing.customerId, charge.customerId),
+    customerEmail: normalizeEmail(readString(customer.email, checkoutCustomer.email, data.customerEmail, payment.customerEmail, billing.customerEmail, charge.customerEmail) || ""),
+    subscriptionId: readString(subscription.id, data.subscriptionId, payment.subscriptionId, billing.subscriptionId, charge.subscriptionId),
+    paymentId: readString(payment.id, data.paymentId, billing.paymentId, charge.paymentId),
+    amountCents: readNumber(payment.amount, payment.paidAmount, data.amount, data.paidAmount, subscription.amount, billing.amount, charge.amount),
   };
 }
 
@@ -112,6 +119,26 @@ export async function findSaleFromWebhook(admin: AdminClient, ids: WebhookIds) {
             : "provider_customer_id";
     const { data } = await admin.from("sales_checkout_sessions").select("*").eq(column, value).maybeSingle();
     if (data) return data as SaleCheckoutSession;
+  }
+
+  if (ids.checkoutUrl) {
+    const { data } = await admin.from("sales_checkout_sessions").select("*").eq("checkout_url", ids.checkoutUrl).maybeSingle();
+    if (data) return data as SaleCheckoutSession;
+  }
+
+  if (ids.customerEmail) {
+    let query = admin
+      .from("sales_checkout_sessions")
+      .select("*")
+      .ilike("buyer_email", ids.customerEmail)
+      .in("status", ["pending", "checkout_created", "paid"])
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (ids.amountCents) query = query.eq("amount_cents", ids.amountCents);
+
+    const { data } = await query;
+    if (data?.[0]) return data[0] as SaleCheckoutSession;
   }
 
   return null;
