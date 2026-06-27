@@ -149,7 +149,7 @@ export async function POST(request: Request) {
       })
       .eq("id", sessionId);
 
-    if (input.redirect) return NextResponse.redirect(checkoutUrl, { headers });
+    if (input.redirect) return NextResponse.redirect(checkoutUrl, { status: 303, headers });
     return NextResponse.json({ sessionId, checkoutUrl }, { headers });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Nao foi possivel criar o checkout.";
