@@ -1173,9 +1173,18 @@ select option:disabled,
 .purchase-success-card{width:min(720px,100%);padding:36px}
 .purchase-success-card h1{margin:0;font-size:2.35rem;letter-spacing:-.04em}
 .purchase-success-card p:not(.eyebrow){max-width:620px;margin:12px 0 0;color:var(--muted);line-height:1.6}
+.purchase-success-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:24px}
+.purchase-success-summary>div{min-width:0;padding:14px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.025)}
+.purchase-success-summary span{display:block;margin-bottom:5px;color:var(--muted);font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.purchase-success-summary strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.purchase-access-form{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:22px}
+.purchase-access-form .button{min-width:250px}
+.purchase-success-note{font-size:.86rem}
 .purchase-success-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
 @media(max-width:620px){
   .purchase-success-card{padding:26px}
   .purchase-success-card h1{font-size:1.85rem}
+  .purchase-success-summary{grid-template-columns:1fr}
+  .purchase-access-form .button{width:100%;min-width:0}
   .purchase-success-actions .button{width:100%}
 }

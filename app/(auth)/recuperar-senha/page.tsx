@@ -5,8 +5,9 @@ import { requestPasswordResetAction } from "@/app/actions/auth";
 
 export const metadata = { title: "Recuperar senha" };
 
-export default async function PasswordResetPage({ searchParams }: { searchParams: Promise<{ error?: string; success?: string }> }) {
+export default async function PasswordResetPage({ searchParams }: { searchParams: Promise<{ error?: string; success?: string; email?: string }> }) {
   const params = await searchParams;
+  const email = String(params.email || "").trim().toLowerCase();
   return (
     <div className="auth-card">
       <Logo href="/login" />
@@ -15,7 +16,7 @@ export default async function PasswordResetPage({ searchParams }: { searchParams
       {params.error && <div className="notice notice-error">{params.error}</div>}
       {params.success && <div className="notice notice-success">{params.success}</div>}
       <form action={requestPasswordResetAction} className="form-stack">
-        <label className="field"><span>E-mail</span><input className="input" name="email" type="email" autoComplete="email" required /></label>
+        <label className="field"><span>E-mail</span><input className="input" name="email" type="email" autoComplete="email" defaultValue={email} required /></label>
         <SubmitButton pendingText="Enviando...">Enviar instruções</SubmitButton>
       </form>
       <div className="auth-switch"><Link href="/login">Voltar ao login</Link></div>

@@ -4,7 +4,14 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
 function messageUrl(path: string, type: "error" | "success", message: string) {
-  return `${path}?${type}=${encodeURIComponent(message)}`;
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}${type}=${encodeURIComponent(message)}`;
+}
+
+function safeRedirectPath(value: FormDataEntryValue | null, fallback: string) {
+  const path = String(value || "").trim();
+  if (!path || !path.startsWith("/") || path.startsWith("//")) return fallback;
+  return path;
 }
 
 export async function signInAction(formData: FormData) {
@@ -45,14 +52,15 @@ export async function signUpAction(formData: FormData) {
 
 export async function requestPasswordResetAction(formData: FormData) {
   const email = String(formData.get("email") || "").trim().toLowerCase();
-  if (!email) redirect(messageUrl("/recuperar-senha", "error", "Informe seu e-mail."));
+  const returnTo = safeRedirectPath(formData.get("redirect_to"), "/recuperar-senha");
+  if (!email) redirect(messageUrl(returnTo, "error", "Informe seu e-mail."));
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
   const supabase = await createClient();
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${siteUrl}/auth/callback?next=/redefinir-senha`,
   });
-  if (error) redirect(messageUrl("/recuperar-senha", "error", "Não foi possível enviar o link."));
-  redirect(messageUrl("/recuperar-senha", "success", "Enviamos as instruções para o e-mail informado."));
+  if (error) redirect(messageUrl(returnTo, "error", "Nao foi possivel enviar o link de definicao de senha."));
+  redirect(messageUrl(returnTo, "success", "Enviamos o link para definir a senha no e-mail informado."));
 }
 
 export async function updatePasswordAction(formData: FormData) {
