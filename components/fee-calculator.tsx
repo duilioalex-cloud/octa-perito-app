@@ -98,6 +98,8 @@ type InitialCalculator = {
 
 type FeeCalculatorProps = {
   action: (formData: FormData) => void | Promise<void>;
+  proposalAction?: (formData: FormData) => void | Promise<void>;
+  returnTo?: string;
   processInfo: ProcessInfo;
   summary: Summary;
   initial?: InitialCalculator | null;
@@ -118,7 +120,7 @@ function money(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number.isFinite(value) ? value : 0);
 }
 
-export function FeeCalculator({ action, processInfo, summary, initial }: FeeCalculatorProps) {
+export function FeeCalculator({ action, proposalAction, returnTo, processInfo, summary, initial }: FeeCalculatorProps) {
   const calculator: Record<string, any> = initial?.calculator ?? {};
   const stageHours = (calculator.stage_hours || {}) as Record<string, unknown>;
   const expenses = (calculator.expenses || {}) as Record<string, unknown>;
@@ -201,7 +203,7 @@ export function FeeCalculator({ action, processInfo, summary, initial }: FeeCalc
     `Foram estimadas ${result.hoursTotal.toLocaleString("pt-BR")} horas técnicas para estudo dos autos, diligência, análises, elaboração do laudo, revisão e esclarecimentos.`,
     `Honorários técnicos estimados: ${money(result.professionalTotal)}.`,
     `Despesas operacionais estimadas: ${money(result.directExpenses)}.`,
-    `Total sugerido da proposta: ${money(result.totalSuggested)}.`,
+    `Valor a cobrar / total da proposta: ${money(result.totalSuggested)}.`,
     `Depósito inicial sugerido (${result.advancePercentage.toLocaleString("pt-BR")}%): ${money(result.advanceAmount)}.`,
     legalAid ? "Justiça gratuita marcada: conferir tabela aplicável e fundamentar eventual pedido acima do limite." : "",
     result.aboveTable ? "Atenção: o valor sugerido supera a tabela/limite informado." : "",
@@ -218,11 +220,26 @@ export function FeeCalculator({ action, processInfo, summary, initial }: FeeCalc
       </div>
 
       <form className="fee-calculator-form" action={action}>
+        <input type="hidden" name="amount_to_charge" value={result.totalSuggested.toFixed(2)} />
+        {returnTo && <input type="hidden" name="return_to" value={returnTo} />}
         <div className="calculator-kpis">
           <div><span>Honorários técnicos</span><strong>{money(result.professionalTotal)}</strong></div>
           <div><span>Despesas estimadas</span><strong>{money(result.directExpenses)}</strong></div>
-          <div><span>Total sugerido</span><strong>{money(result.totalSuggested)}</strong></div>
+          <div><span>Valor a cobrar</span><strong>{money(result.totalSuggested)}</strong></div>
           <div><span>Depósito inicial</span><strong>{money(result.advanceAmount)}</strong></div>
+        </div>
+
+        <div className="calculator-charge-card">
+          <div>
+            <span>Valor a cobrar do processo</span>
+            <strong>{money(result.totalSuggested)}</strong>
+            <p>Este e o valor que sera salvo como honorarios propostos e usado para gerar a proposta de honorarios.</p>
+          </div>
+          <div>
+            <span>Deposito inicial sugerido</span>
+            <b>{money(result.advanceAmount)}</b>
+            <small>Saldo apos entrega/esclarecimentos: {money(result.balanceAmount)}</small>
+          </div>
         </div>
 
         <div className="calculator-process-facts">
@@ -304,9 +321,21 @@ export function FeeCalculator({ action, processInfo, summary, initial }: FeeCalc
         </div>
 
         <div className="form-actions full">
-          <SubmitButton className="button button-primary" pendingText="Salvando cálculo...">Salvar no processo</SubmitButton>
+          <SubmitButton className="button button-primary" pendingText="Salvando cálculo...">Salvar valor a cobrar no processo</SubmitButton>
         </div>
       </form>
+
+      {proposalAction && (
+        <div className="calculator-proposal-actions">
+          <div>
+            <strong>Proposta de honorarios</strong>
+            <span>Gera um documento editavel com memoria de calculo, justificativa tecnica e valor a cobrar salvo.</span>
+          </div>
+          <form action={proposalAction}>
+            <SubmitButton className="button button-secondary" pendingText="Gerando proposta...">Gerar proposta de honorarios</SubmitButton>
+          </form>
+        </div>
+      )}
     </article>
   );
 }

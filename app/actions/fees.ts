@@ -52,7 +52,7 @@ async function ensureProcess(processId: string) {
   const context = await requireContext();
   const { data: process } = await context.supabase
     .from("processes")
-    .select("id,process_number,court,subject,expertise_area,expertise_type")
+    .select("id,process_number,court,district,division,case_class,plaintiff,defendant,subject,expertise_area,expertise_type")
     .eq("id", processId)
     .eq("organization_id", context.organization.id)
     .maybeSingle();
@@ -77,6 +77,7 @@ async function addActivity(
 function refresh(processId: string) {
   revalidatePath("/dashboard");
   revalidatePath("/honorarios");
+  revalidatePath("/calculadora-honorarios");
   revalidatePath("/despesas");
   revalidatePath(`/honorarios/${processId}`);
   revalidatePath(`/despesas/${processId}`);
@@ -89,6 +90,18 @@ function redirectProcessError(processId: string, message: string): never {
 
 function redirectProcessSuccess(processId: string, message: string): never {
   redirect(`/processos/${processId}?success=${encodeURIComponent(message)}`);
+}
+
+function safeReturnUrl(value: string, processId: string) {
+  if (value.startsWith("/calculadora-honorarios")) return value;
+  if (value.startsWith(`/processos/${processId}`)) return value;
+  if (value.startsWith(`/honorarios/${processId}`)) return value;
+  return "";
+}
+
+function appendMessage(url: string, key: "success" | "error", message: string) {
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}${key}=${encodeURIComponent(message)}`;
 }
 
 const stageFields = [
@@ -196,13 +209,137 @@ function buildFeeCalculatorMemory(input: {
     expenseLines || "- Sem despesas diretas informadas.",
     `Total de despesas estimadas: ${currency(input.directExpensesTotal)}.`,
     "",
-    `Total sugerido da proposta: ${currency(input.totalSuggested)}.`,
+    `Valor a cobrar / total da proposta: ${currency(input.totalSuggested)}.`,
     `Depósito inicial sugerido (${input.advancePercentage.toLocaleString("pt-BR")}%): ${currency(input.advanceAmount)}.`,
     `Saldo sugerido após entrega/esclarecimentos: ${currency(input.totalSuggested - input.advanceAmount)}.`,
     tableText,
     legalAidText,
     input.customJustification ? `\nJustificativa complementar:\n${input.customJustification}` : "",
   ].filter(Boolean).join("\n");
+}
+
+function buildFeeProposalDocument(input: {
+  organizationName: string;
+  process: any;
+  fee: any;
+}) {
+  const proposedAmount = Number(input.fee?.proposed_amount ?? 0);
+  const advancePercentage = clamp(Number(input.fee?.advance_percentage ?? 0), 0, 100);
+  const advanceAmount = roundMoney(proposedAmount * (advancePercentage / 100));
+  const balanceAmount = roundMoney(proposedAmount - advanceAmount);
+  const calculator = (input.fee?.metadata as any)?.calculator || {};
+  const memoryText = String(calculator.memory_text || input.fee?.notes || "").trim();
+  const courtLine = [input.process.division, input.process.district, input.process.court].filter(Boolean).join(" - ") || "Juizo competente";
+  const partiesLine = [input.process.plaintiff, input.process.defendant].filter(Boolean).join(" x ");
+  const expertiseArea = calculator.expertise_area || input.process.expertise_area || input.process.subject || "pericia judicial";
+
+  return [
+    `EXCELENTISSIMO(A) SENHOR(A) DOUTOR(A) JUIZ(A) DE DIREITO DA ${courtLine}`,
+    "",
+    `Processo n.: ${input.process.process_number}`,
+    partiesLine ? `Partes: ${partiesLine}` : "",
+    "",
+    "PROPOSTA DE HONORARIOS PERICIAIS",
+    "",
+    `${input.organizationName}, perito(a) nomeado(a) nos autos em referencia, vem, respeitosamente, apresentar proposta de honorarios periciais, considerando o escopo tecnico, a complexidade do trabalho, o tempo estimado, as despesas operacionais e as diligencias necessarias.`,
+    "",
+    "1. OBJETO DA PERICIA",
+    "",
+    `A proposta considera a realizacao de ${expertiseArea}, vinculada ao objeto: ${input.process.subject || "objeto pericial a ser delimitado nos autos"}.`,
+    "",
+    "2. ESCOPO TECNICO CONSIDERADO",
+    "",
+    "O trabalho compreende estudo dos autos, analise documental, analise de quesitos, planejamento tecnico, diligencia/vistoria quando aplicavel, levantamentos tecnicos, calculos, elaboracao do laudo, revisao tecnica, resposta aos quesitos e eventuais esclarecimentos posteriores.",
+    "",
+    "3. MEMORIA DE CALCULO",
+    "",
+    memoryText || "Memoria de calculo pendente de detalhamento. Recomenda-se revisar as horas, despesas e justificativas antes do protocolo.",
+    "",
+    "4. VALOR A COBRAR",
+    "",
+    `Valor total da proposta de honorarios: ${currency(proposedAmount)}.`,
+    `Deposito inicial sugerido (${advancePercentage.toLocaleString("pt-BR")}%): ${currency(advanceAmount)}.`,
+    `Saldo sugerido apos entrega do laudo e esclarecimentos: ${currency(balanceAmount)}.`,
+    "",
+    "5. REQUERIMENTOS",
+    "",
+    "Diante do exposto, requer-se:",
+    "a) a juntada da presente proposta de honorarios;",
+    "b) a intimacao das partes para manifestacao, na forma processual aplicavel;",
+    "c) a homologacao dos honorarios periciais no valor indicado, ou outro que Vossa Excelencia entenda adequado;",
+    "d) a determinacao do deposito judicial dos honorarios antes do inicio dos trabalhos, quando cabivel;",
+    "e) a autorizacao de levantamento parcial inicial, quando admitido pelo juizo, com saldo ao final do trabalho pericial.",
+    "",
+    "Termos em que, pede deferimento.",
+    "",
+    "Local e data.",
+    "",
+    "__________________________________",
+    "Perito(a) do juizo",
+  ].filter(Boolean).join("\n");
+}
+
+export async function generateFeeProposalDocumentAction(processId: string) {
+  const { organization, supabase, user, process } = await ensureProcess(processId);
+  if (!hasPermission(organization.role, "documents:write")) {
+    redirect(`/calculadora-honorarios?process=${processId}&error=${encodeURIComponent("Seu nivel de acesso nao permite gerar documentos.")}`);
+  }
+
+  const { data: fee, error: feeError } = await supabase
+    .from("process_fees")
+    .select("*")
+    .eq("process_id", processId)
+    .eq("organization_id", organization.id)
+    .eq("is_primary", true)
+    .neq("status", "cancelled")
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const proposedAmount = Number(fee?.proposed_amount ?? 0);
+  if (feeError || !fee || !Number.isFinite(proposedAmount) || proposedAmount <= 0) {
+    redirect(`/calculadora-honorarios?process=${processId}&error=${encodeURIComponent("Salve primeiro o valor a cobrar na calculadora para gerar a proposta.")}`);
+  }
+
+  const title = `Proposta de honorarios - ${process.process_number}`;
+  const content = buildFeeProposalDocument({ organizationName: organization.name, process, fee });
+  const { data: document, error } = await supabase.from("generated_documents").insert({
+    organization_id: organization.id,
+    process_id: processId,
+    template_id: null,
+    title,
+    content,
+    variables: {
+      source: "fee_proposal",
+      fee_id: fee.id,
+      process_number: process.process_number,
+      proposed_amount: proposedAmount,
+    },
+    status: "draft",
+    version: 1,
+    created_by: user.id,
+  }).select("id").single();
+
+  if (error || !document) {
+    redirect(`/calculadora-honorarios?process=${processId}&error=${encodeURIComponent(error?.message || "Nao foi possivel gerar a proposta de honorarios.")}`);
+  }
+
+  await addActivity(supabase, {
+    organizationId: organization.id,
+    processId,
+    userId: user.id,
+    type: "fee_proposal_document_created",
+    description: "Proposta de honorarios gerada como documento.",
+    metadata: {
+      generated_document_id: document.id,
+      proposed_amount: proposedAmount,
+      process_number: process.process_number,
+    },
+  });
+
+  refresh(processId);
+  revalidatePath("/documentos");
+  redirect(`/documentos/${document.id}?success=${encodeURIComponent("Proposta de honorarios gerada. Revise antes de exportar ou protocolar.")}`);
 }
 
 export async function saveFeeCalculatorAction(processId: string, feeId: string | null, expenseId: string | null, formData: FormData) {
@@ -280,7 +417,7 @@ export async function saveFeeCalculatorAction(processId: string, feeId: string |
 
   const calculatorMetadata = {
     source: "fee_calculator",
-    version: "0.9.7",
+    version: "0.9.9",
     calculator: {
       expertise_area: expertiseArea,
       justice_branch: justiceBranch,
@@ -362,10 +499,16 @@ export async function saveFeeCalculatorAction(processId: string, feeId: string |
       .eq("organization_id", organization.id);
     feeError = result.error;
   } else {
-    const result = await supabase.from("process_fees").insert({ ...feePayload, created_by: user.id, source_key: "fee_calculator_primary" });
+    const result = await supabase.from("process_fees").insert({ ...feePayload, created_by: user.id });
     feeError = result.error;
   }
   if (feeError) redirectProcessError(processId, feeError.message || "Não foi possível salvar a proposta de honorários.");
+
+  await supabase
+    .from("processes")
+    .update({ fee_proposed: totalSuggested })
+    .eq("id", processId)
+    .eq("organization_id", organization.id);
 
   let targetExpenseId = expenseId || null;
   if (!targetExpenseId) {
@@ -428,7 +571,10 @@ export async function saveFeeCalculatorAction(processId: string, feeId: string |
   });
 
   refresh(processId);
-  redirectProcessSuccess(processId, "Calculadora salva: honorários propostos e custos estimados atualizados no processo.");
+  const successMessage = "Calculadora salva: honorarios propostos e custos estimados atualizados no processo.";
+  const returnTo = safeReturnUrl(text(formData, "return_to"), processId);
+  if (returnTo) redirect(appendMessage(returnTo, "success", successMessage));
+  redirectProcessSuccess(processId, successMessage);
 }
 
 export async function savePrimaryFeeAction(processId: string, feeId: string | null, formData: FormData) {
@@ -488,6 +634,17 @@ export async function savePrimaryFeeAction(processId: string, feeId: string | nu
     description: feeId ? "Dados dos honorários periciais atualizados." : "Controle de honorários periciais criado.",
     metadata: { status: payload.status, proposed_amount: payload.proposed_amount, approved_amount: payload.approved_amount },
   });
+
+  await supabase
+    .from("processes")
+    .update({
+      fee_proposed: payload.proposed_amount,
+      fee_arbitrated: payload.approved_amount || payload.initial_arbitrated_amount,
+      fee_deposited: payload.opening_deposited_amount,
+      fee_received: payload.opening_received_amount,
+    })
+    .eq("id", processId)
+    .eq("organization_id", organization.id);
 
   refresh(processId);
   redirect(`/honorarios/${processId}?success=${encodeURIComponent("Honorários salvos com sucesso.")}`);

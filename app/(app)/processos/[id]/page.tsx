@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentOrganization } from "@/lib/current-organization";
 import { hasPermission } from "@/lib/permissions";
 import { completeDeadlineAction, createDeadlineAction } from "@/app/actions/deadlines";
-import { saveFeeCalculatorAction } from "@/app/actions/fees";
+import { generateFeeProposalDocumentAction, saveFeeCalculatorAction } from "@/app/actions/fees";
 import { deleteProcessAction, updateProcessStatusAction } from "@/app/actions/processes";
 import { deleteExpertReportAction } from "@/app/actions/reports";
 import { DeleteProcessButton } from "@/components/delete-process-button";
@@ -79,6 +79,7 @@ export default async function ProcessDetailPage({ params, searchParams }: { para
   const deadlineAction = createDeadlineAction.bind(null, id);
   const deleteProcess = deleteProcessAction.bind(null, id);
   const calculatorAction = saveFeeCalculatorAction.bind(null, id, primaryFee?.id || null, calculatorExpense?.id || null);
+  const proposalAction = generateFeeProposalDocumentAction.bind(null, id);
   const canDelete = ["owner", "admin"].includes(organization.role);
   const calculatorMetadata = ((primaryFee?.metadata as any)?.calculator || (calculatorExpense?.metadata as any)?.calculator || null) as Record<string, any> | null;
 
@@ -145,6 +146,7 @@ export default async function ProcessDetailPage({ params, searchParams }: { para
       {canViewFinance && (
         <FeeCalculator
           action={calculatorAction}
+          proposalAction={canWriteDocuments ? proposalAction : undefined}
           processInfo={{
             processNumber: process.process_number,
             court: process.court || "",

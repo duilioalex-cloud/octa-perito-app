@@ -38,6 +38,83 @@ async function addActivity(
   });
 }
 
+function feeStatusFromLegacyValues(values: { proposed: number; arbitrated: number; deposited: number; received: number }) {
+  if (values.received > 0 && values.arbitrated > 0 && values.received >= values.arbitrated) return "fully_released";
+  if (values.received > 0) return "partially_released";
+  if (values.deposited > 0 && values.arbitrated > 0 && values.deposited >= values.arbitrated) return "fully_deposited";
+  if (values.deposited > 0) return "partially_deposited";
+  if (values.arbitrated > 0) return "approved";
+  if (values.proposed > 0) return "proposal_submitted";
+  return "not_defined";
+}
+
+async function syncPrimaryFeeFromProcessForm(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  payload: {
+    organizationId: string;
+    processId: string;
+    userId: string;
+    expertiseType: string | null;
+    proposed: number;
+    arbitrated: number;
+    deposited: number;
+    received: number;
+  },
+) {
+  const hasFinancialValue = payload.proposed > 0 || payload.arbitrated > 0 || payload.deposited > 0 || payload.received > 0;
+  const { data: existingFee } = await supabase
+    .from("process_fees")
+    .select("id")
+    .eq("process_id", payload.processId)
+    .eq("organization_id", payload.organizationId)
+    .eq("is_primary", true)
+    .neq("status", "cancelled")
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!hasFinancialValue && !existingFee) return;
+
+  const feePayload = {
+    status: feeStatusFromLegacyValues(payload),
+    fee_type: payload.expertiseType === "technical_assistant" ? "technical_assistant" : payload.expertiseType === "extrajudicial" ? "extrajudicial" : "judicial_expert",
+    proposed_amount: payload.proposed,
+    initial_arbitrated_amount: payload.arbitrated,
+    approved_amount: payload.arbitrated,
+    opening_deposited_amount: payload.deposited,
+    opening_received_amount: payload.received,
+  };
+
+  if (existingFee?.id) {
+    const { error } = await supabase
+      .from("process_fees")
+      .update(feePayload)
+      .eq("id", existingFee.id)
+      .eq("process_id", payload.processId)
+      .eq("organization_id", payload.organizationId);
+    if (error) throw error;
+    return;
+  }
+
+  const { error } = await supabase.from("process_fees").insert({
+    organization_id: payload.organizationId,
+    process_id: payload.processId,
+    title: "Honorarios informados no cadastro",
+    funding_mode: "court_deposit",
+    responsibility_type: "not_defined",
+    advance_percentage: 0,
+    is_primary: true,
+    notes: "Registro criado automaticamente a partir dos honorarios informados no cadastro do processo.",
+    metadata: {
+      source: "process_form_sync",
+      version: "0.9.9",
+    },
+    created_by: payload.userId,
+    ...feePayload,
+  });
+  if (error) throw error;
+}
+
 export async function deleteProcessAction(processId: string) {
   const organization = await getCurrentOrganization();
   if (!organization) redirect("/onboarding");
@@ -188,6 +265,21 @@ export async function createProcessAction(formData: FormData) {
   }
   if (deadlineRows.length) await supabase.from("process_deadlines").insert(deadlineRows);
 
+  try {
+    await syncPrimaryFeeFromProcessForm(supabase, {
+      organizationId: organization.id,
+      processId: data.id,
+      userId: user.id,
+      expertiseType: payload.expertise_type,
+      proposed: payload.fee_proposed,
+      arbitrated: payload.fee_arbitrated,
+      deposited: payload.fee_deposited,
+      received: payload.fee_received,
+    });
+  } catch (syncError: any) {
+    redirect(`/processos/${data.id}?error=${encodeURIComponent(syncError?.message || "Processo cadastrado, mas nao foi possivel sincronizar os honorarios.")}`);
+  }
+
   await addActivity(supabase, {
     organizationId: organization.id,
     processId: data.id,
@@ -198,6 +290,7 @@ export async function createProcessAction(formData: FormData) {
 
   revalidatePath("/dashboard");
   revalidatePath("/processos");
+  revalidatePath("/honorarios");
   redirect(`/processos/${data.id}?success=${encodeURIComponent("Processo cadastrado com sucesso.")}`);
 }
 
@@ -243,6 +336,21 @@ export async function updateProcessAction(processId: string, formData: FormData)
 
   if (error) redirect(`/processos/${processId}/editar?error=${encodeURIComponent("Não foi possível atualizar o processo.")}`);
 
+  try {
+    await syncPrimaryFeeFromProcessForm(supabase, {
+      organizationId: organization.id,
+      processId,
+      userId: user.id,
+      expertiseType: payload.expertise_type,
+      proposed: payload.fee_proposed,
+      arbitrated: payload.fee_arbitrated,
+      deposited: payload.fee_deposited,
+      received: payload.fee_received,
+    });
+  } catch (syncError: any) {
+    redirect(`/processos/${processId}/editar?error=${encodeURIComponent(syncError?.message || "Nao foi possivel sincronizar os honorarios com o financeiro.")}`);
+  }
+
   await addActivity(supabase, {
     organizationId: organization.id,
     processId,
@@ -254,6 +362,7 @@ export async function updateProcessAction(processId: string, formData: FormData)
 
   revalidatePath("/dashboard");
   revalidatePath("/processos");
+  revalidatePath("/honorarios");
   revalidatePath(`/processos/${processId}`);
   redirect(`/processos/${processId}?success=${encodeURIComponent("Processo atualizado com sucesso.")}`);
 }

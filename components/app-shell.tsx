@@ -8,6 +8,7 @@ import { hasPermission, roleLabels } from "@/lib/permissions";
 
 const navItems = [
   { href: "/dashboard", label: "Painel", icon: "P", permission: "dashboard:view" },
+  { href: "/calculadora-honorarios", label: "Calculadora de Honorarios/Proposta", icon: "H", permission: "finance:view" },
   { href: "/processos", label: "Processos", icon: "#", permission: "processes:view" },
   { href: "/biblioteca", label: "Biblioteca tecnica", icon: "B", permission: "templates:view" },
   { href: "/documentos", label: "Documentos", icon: "D", permission: "documents:view" },
