@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentOrganization } from "@/lib/current-organization";
+import { hasPermission } from "@/lib/permissions";
 import { saveNotificationPreferencesAction } from "@/app/actions/calendar";
 import { SubmitButton } from "@/components/submit-button";
 import { alertLevelClass, alertLevelFor, alertLevelLabel, eventTypeIcon, eventTypeLabel } from "@/lib/calendar-options";
@@ -30,6 +31,7 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
   const query = await searchParams;
   const organization = await getCurrentOrganization();
   if (!organization) return null;
+  const canViewFinance = hasPermission(organization.role, "finance:view");
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
@@ -38,8 +40,12 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
   const horizon = new Date(now.getTime() + 30 * 86400000);
   const [{ data: events }, { data: fees }, { data: expenses }, { data: preferences }] = await Promise.all([
     supabase.from("calendar_events").select("id,process_id,title,event_type,status,priority,starts_at,address,city,location_name,processes(id,process_number,subject)").eq("organization_id", organization.id).not("status", "in", "(completed,cancelled)").lte("starts_at", horizon.toISOString()).order("starts_at"),
-    supabase.from("process_fees").select("id,process_id,title,status,approved_amount,processes(id,process_number,subject)").eq("organization_id", organization.id).in("status", ["proposal_submitted", "awaiting_approval", "approved", "awaiting_deposit", "partially_deposited", "release_requested", "partially_released"]).order("updated_at", { ascending: false }).limit(30),
-    supabase.from("process_expenses").select("id,process_id,description,total_amount,reimbursement_status,processes(id,process_number,subject)").eq("organization_id", organization.id).eq("is_reimbursable", true).in("reimbursement_status", ["pending", "requested", "approved"]).order("expense_date", { ascending: false }).limit(30),
+    canViewFinance
+      ? supabase.from("process_fees").select("id,process_id,title,status,approved_amount,processes(id,process_number,subject)").eq("organization_id", organization.id).in("status", ["proposal_submitted", "awaiting_approval", "approved", "awaiting_deposit", "partially_deposited", "release_requested", "partially_released"]).order("updated_at", { ascending: false }).limit(30)
+      : Promise.resolve({ data: [] }),
+    canViewFinance
+      ? supabase.from("process_expenses").select("id,process_id,description,total_amount,reimbursement_status,processes(id,process_number,subject)").eq("organization_id", organization.id).eq("is_reimbursable", true).in("reimbursement_status", ["pending", "requested", "approved"]).order("expense_date", { ascending: false }).limit(30)
+      : Promise.resolve({ data: [] }),
     supabase.from("notification_preferences").select("*").eq("organization_id", organization.id).eq("user_id", user.id).maybeSingle(),
   ]);
 
@@ -81,7 +87,7 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
       <section className="stats-grid alert-stats-grid">
         <article className="card stat-card"><span>Alertas de agenda</span><strong>{activeCalendarAlerts}</strong><small>Até os próximos 7 dias</small></article>
         <article className="card stat-card"><span>Vencidos</span><strong>{grouped.overdue.length}</strong><small>Compromissos ainda não concluídos</small></article>
-        <article className="card stat-card"><span>Pendências financeiras</span><strong>{financialAlerts}</strong><small>Honorários e reembolsos</small></article>
+        {canViewFinance && <article className="card stat-card"><span>Pendências financeiras</span><strong>{financialAlerts}</strong><small>Honorários e reembolsos</small></article>}
         <article className="card stat-card"><span>Dados operacionais incompletos</span><strong>{missingAddress.length + awaitingConfirmation.length}</strong><small>Endereço ou confirmação pendente</small></article>
       </section>
 
@@ -99,8 +105,8 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
             <div className="alert-check-list">
               <div><span>Eventos sem endereço/local</span><strong>{missingAddress.length}</strong></div>
               <div><span>Diligências aguardando confirmação</span><strong>{awaitingConfirmation.length}</strong></div>
-              <div><span>Honorários pendentes</span><strong>{fees?.length || 0}</strong></div>
-              <div><span>Reembolsos pendentes</span><strong>{expenses?.length || 0}</strong></div>
+              {canViewFinance && <div><span>Honorários pendentes</span><strong>{fees?.length || 0}</strong></div>}
+              {canViewFinance && <div><span>Reembolsos pendentes</span><strong>{expenses?.length || 0}</strong></div>}
             </div>
           </article>
 
@@ -114,8 +120,8 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
               <label className="check-line"><input name="in_app_enabled" type="checkbox" defaultChecked={pref.in_app_enabled} /> Alertas dentro do sistema</label>
               <label className="check-line"><input name="email_enabled" type="checkbox" defaultChecked={pref.email_enabled} /> Alertas por e-mail</label>
               <label className="check-line"><input name="daily_digest_enabled" type="checkbox" defaultChecked={pref.daily_digest_enabled} /> Resumo diário</label>
-              <label className="check-line"><input name="fee_alerts_enabled" type="checkbox" defaultChecked={pref.fee_alerts_enabled} /> Alertas de honorários</label>
-              <label className="check-line"><input name="expense_alerts_enabled" type="checkbox" defaultChecked={pref.expense_alerts_enabled} /> Alertas de despesas</label>
+              {canViewFinance && <label className="check-line"><input name="fee_alerts_enabled" type="checkbox" defaultChecked={pref.fee_alerts_enabled} /> Alertas de honorários</label>}
+              {canViewFinance && <label className="check-line"><input name="expense_alerts_enabled" type="checkbox" defaultChecked={pref.expense_alerts_enabled} /> Alertas de despesas</label>}
               <label className="check-line"><input name="overdue_alerts_enabled" type="checkbox" defaultChecked={pref.overdue_alerts_enabled} /> Alertas de vencidos</label>
               <SubmitButton pendingText="Salvando...">Salvar preferências</SubmitButton>
               <p className="settings-note">Nesta versão, os alertas são exibidos dentro do OCTA Perito. As preferências de e-mail ficam preparadas para a automação de envio da etapa seguinte.</p>
@@ -124,7 +130,7 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
         </aside>
       </section>
 
-      <section className="dashboard-grid financial-alert-grid">
+      {canViewFinance && <section className="dashboard-grid financial-alert-grid">
         <article className="card panel">
           <div className="panel-header"><h2>Honorários com pendência</h2><Link href="/honorarios">Abrir honorários</Link></div>
           {!fees?.length ? <div className="empty-state"><strong>Nenhuma pendência de honorários localizada.</strong></div> : <div className="alert-financial-list">{fees.map((fee) => {
@@ -140,7 +146,7 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
             return <Link href={`/despesas/${expense.process_id}`} className="alert-financial-row" key={expense.id}><div><strong>{process?.process_number || "Processo"}</strong><span>{expense.description}</span></div><div><span>Status</span><strong>{expense.reimbursement_status}</strong></div><div><span>Valor</span><strong>{formatCurrency(expense.total_amount)}</strong></div><b>›</b></Link>;
           })}</div>}
         </article>
-      </section>
+      </section>}
     </>
   );
 }

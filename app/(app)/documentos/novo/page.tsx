@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentOrganization } from "@/lib/current-organization";
+import { requireCurrentOrganization } from "@/lib/current-organization";
 import { createGeneratedDocumentAction } from "@/app/actions/documents";
 import { DocumentGenerator } from "@/components/document-generator";
 import { formatCurrency, formatDate } from "@/lib/process-options";
@@ -10,7 +10,7 @@ export const metadata = { title: "Gerar documento" };
 const today = () => new Intl.DateTimeFormat("pt-BR", { dateStyle: "long" }).format(new Date());
 
 export default async function NewDocumentPage({ searchParams }: { searchParams: Promise<{ template?: string; process?: string; error?: string }> }) {
-  const query = await searchParams; const organization = await getCurrentOrganization(); if (!organization) return null; const supabase = await createClient();
+  const query = await searchParams; const organization = await requireCurrentOrganization("documents:write"); const supabase = await createClient();
   const { data: templates } = await supabase.from("templates").select("id,title").eq("status", "active").order("is_octa_model", { ascending: false }).order("sort_order");
   const { data: processes } = await supabase.from("processes").select("id,process_number,subject").eq("organization_id", organization.id).order("updated_at", { ascending: false });
   if (!query.template || !query.process) return <><header className="page-header"><div><p className="eyebrow">GERADOR DE DOCUMENTOS</p><h1>Selecionar base</h1><p>Escolha o processo e o modelo que serão usados na geração.</p></div><Link className="button button-secondary" href="/biblioteca">Voltar</Link></header>{query.error && <div className="notice notice-error">{query.error}</div>}<form className="card form-card" method="get"><div className="form-grid"><label className="field full"><span>Processo</span><select className="select" name="process" defaultValue={query.process || ""} required><option value="">Selecione</option>{processes?.map((p) => <option value={p.id} key={p.id}>{p.process_number} — {p.subject || "Sem objeto"}</option>)}</select></label><label className="field full"><span>Modelo</span><select className="select" name="template" defaultValue={query.template || ""} required><option value="">Selecione</option>{templates?.map((t) => <option value={t.id} key={t.id}>{t.title}</option>)}</select></label></div><div className="form-actions"><button className="button button-primary">Continuar</button></div></form></>;

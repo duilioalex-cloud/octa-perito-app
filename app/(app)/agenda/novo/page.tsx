@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentOrganization } from "@/lib/current-organization";
+import { requireCurrentOrganization } from "@/lib/current-organization";
 import { saveCalendarEventAction } from "@/app/actions/calendar";
 import { SubmitButton } from "@/components/submit-button";
 import { EVENT_STATUS_OPTIONS, EVENT_TYPE_OPTIONS } from "@/lib/calendar-options";
@@ -10,8 +10,7 @@ export const metadata = { title: "Novo compromisso" };
 
 export default async function NewCalendarEventPage({ searchParams }: { searchParams: Promise<{ process?: string; error?: string }> }) {
   const query = await searchParams;
-  const organization = await getCurrentOrganization();
-  if (!organization) return null;
+  const organization = await requireCurrentOrganization("calendar:write");
   const supabase = await createClient();
   const { data: processes } = await supabase.from("processes").select("id,process_number,subject,status").eq("organization_id", organization.id).neq("status", "closed").order("process_number");
   const action = saveCalendarEventAction.bind(null, null);

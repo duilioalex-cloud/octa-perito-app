@@ -3,6 +3,7 @@ import { deleteExpertReportAction } from "@/app/actions/reports";
 import { DeleteReportButton } from "@/components/delete-report-button";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentOrganization } from "@/lib/current-organization";
+import { hasPermission } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/process-options";
 import { REPORT_STATUS_OPTIONS, reportStatusLabel } from "@/lib/report-options";
 
@@ -34,13 +35,14 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const draftCount = (reports || []).filter((item) => item.status === "draft").length;
   const reviewCount = (reports || []).filter((item) => item.status === "in_review").length;
   const finalCount = (reports || []).filter((item) => ["final", "filed"].includes(item.status)).length;
+  const canCreateReport = hasPermission(organization.role, "reports:write");
   const canDelete = ["owner", "admin"].includes(organization.role);
 
   return (
     <>
       <header className="page-header">
         <div><p className="eyebrow">CONSTRUTOR TÉCNICO</p><h1>Laudos periciais</h1><p>Capítulos modulares, quesitos, anexos, fontes e controle de versões.</p></div>
-        <div className="header-actions"><Link className="button button-primary" href="/laudos/novo">+ Novo laudo</Link></div>
+        {canCreateReport && <div className="header-actions"><Link className="button button-primary" href="/laudos/novo">+ Novo laudo</Link></div>}
       </header>
 
       {query.success && <div className="notice notice-success">{query.success}</div>}

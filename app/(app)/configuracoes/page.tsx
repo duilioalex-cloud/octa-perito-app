@@ -1,7 +1,9 @@
 import Image from "next/image";
+import Link from "next/link";
 import { removeBrandAssetAction, updateDocumentIdentityAction } from "@/app/actions/settings";
 import { SubmitButton } from "@/components/submit-button";
 import { getCurrentOrganization } from "@/lib/current-organization";
+import { hasPermission } from "@/lib/permissions";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata = { title: "Configurações" };
@@ -18,6 +20,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     supabase.from("organization_document_settings").select("*").eq("organization_id", organization.id).maybeSingle(),
   ]);
   const canEdit = ["owner", "admin"].includes(organization.role);
+  const canManageUsers = hasPermission(organization.role, "users:manage");
   const removeLogo = removeBrandAssetAction.bind(null, "logo");
   const removeSignature = removeBrandAssetAction.bind(null, "signature");
   const registration = settings?.council_registration || [profile?.council, profile?.council_number].filter(Boolean).join(" ");
@@ -28,6 +31,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       {query.success && <div className="notice notice-success">{query.success}</div>}
       {query.error && <div className="notice notice-error">{query.error}</div>}
       {!canEdit && <div className="notice notice-error">Somente proprietários e administradores podem alterar estas configurações.</div>}
+      {canManageUsers && <div className="notice"><Link className="button button-secondary" href="/configuracoes/usuarios">Gerenciar usuarios e niveis de acesso</Link></div>}
 
       <form className="card form-card form-card-wide identity-settings-form" action={updateDocumentIdentityAction}>
         <fieldset disabled={!canEdit}>

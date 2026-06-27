@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentOrganization } from "@/lib/current-organization";
+import { hasPermission } from "@/lib/permissions";
 import { eventTypeIcon, eventTypeLabel } from "@/lib/calendar-options";
 import { expenseCategoryLabel } from "@/lib/expense-options";
 import { formatCurrency, formatDate, formatDateTime, PROCESS_STATUS_OPTIONS } from "@/lib/process-options";
@@ -142,6 +143,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   if (!organization) return null;
 
   const supabase = await createClient();
+  const canViewFinance = hasPermission(organization.role, "finance:view");
   const now = new Date();
   const selectedPeriod = dashboardPeriod(query.period, now);
   const nextSeven = new Date(now.getTime() + 7 * 86400000);
@@ -157,15 +159,27 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     expensesResult,
     tripsResult,
   ] = await Promise.all([
-    supabase.from("organization_financial_dashboard").select("*").eq("organization_id", organization.id).maybeSingle(),
-    supabase.from("process_financial_summary").select("*").eq("organization_id", organization.id).order("forecast_result", { ascending: false }),
+    canViewFinance
+      ? supabase.from("organization_financial_dashboard").select("*").eq("organization_id", organization.id).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    canViewFinance
+      ? supabase.from("process_financial_summary").select("*").eq("organization_id", organization.id).order("forecast_result", { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
     supabase.from("processes").select("id,process_number,subject,plaintiff,defendant,status,priority,report_due_at,financial_status,last_movement_at,created_at").eq("organization_id", organization.id).order("last_movement_at", { ascending: false }),
     supabase.from("expert_reports").select("id,process_id,title,status,updated_at").eq("organization_id", organization.id).order("updated_at", { ascending: false }),
     supabase.from("calendar_events").select("id,process_id,title,event_type,status,priority,starts_at,location_name,city,processes(id,process_number)").eq("organization_id", organization.id).not("status", "in", "(completed,cancelled)").order("starts_at", { ascending: true }),
-    supabase.from("process_fees").select("process_id,proposed_amount,approved_amount,proposed_at,approved_at,status").eq("organization_id", organization.id).neq("status", "cancelled"),
-    supabase.from("fee_transactions").select("process_id,transaction_type,deposit_delta,received_delta,occurred_at,created_at").eq("organization_id", organization.id).eq("status", "confirmed"),
-    supabase.from("process_expenses").select("process_id,category,total_amount,payment_status,expense_date,is_reimbursable,reimbursement_status").eq("organization_id", organization.id).neq("payment_status", "cancelled"),
-    supabase.from("process_trips").select("process_id,status,total_cost,departure_at,created_at").eq("organization_id", organization.id).neq("status", "cancelled"),
+    canViewFinance
+      ? supabase.from("process_fees").select("process_id,proposed_amount,approved_amount,proposed_at,approved_at,status").eq("organization_id", organization.id).neq("status", "cancelled")
+      : Promise.resolve({ data: [], error: null }),
+    canViewFinance
+      ? supabase.from("fee_transactions").select("process_id,transaction_type,deposit_delta,received_delta,occurred_at,created_at").eq("organization_id", organization.id).eq("status", "confirmed")
+      : Promise.resolve({ data: [], error: null }),
+    canViewFinance
+      ? supabase.from("process_expenses").select("process_id,category,total_amount,payment_status,expense_date,is_reimbursable,reimbursement_status").eq("organization_id", organization.id).neq("payment_status", "cancelled")
+      : Promise.resolve({ data: [], error: null }),
+    canViewFinance
+      ? supabase.from("process_trips").select("process_id,status,total_cost,departure_at,created_at").eq("organization_id", organization.id).neq("status", "cancelled")
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   const financialRows = (financialRowsResult.data ?? []) as FinancialRow[];
@@ -375,8 +389,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       <header className="page-header dashboard-page-header">
         <div>
           <p className="eyebrow">PAINEL EXECUTIVO</p>
-          <h1>Financeiro e operacional</h1>
-          <p>Receitas, custos, prazos, laudos e pendências consolidados para decisão rápida.</p>
+          <h1>{canViewFinance ? "Financeiro e operacional" : "Operacional"}</h1>
+          <p>{canViewFinance ? "Receitas, custos, prazos, laudos e pendências consolidados para decisão rápida." : "Processos, prazos, diligências e laudos consolidados para acompanhamento da rotina."}</p>
         </div>
         <div className="dashboard-header-tools">
           <form className="dashboard-period-form" method="get">
@@ -410,18 +424,31 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <strong>{selectedPeriod.label}</strong>
           <small>{selectedProcess ? `${selectedProcess.process_number}${selectedProcess.subject ? ` · ${selectedProcess.subject}` : ""}` : "Todos os processos"}</small>
         </div>
-        <div><span>Proposto</span><strong>{formatCurrency(proposedInPeriod)}</strong></div>
-        <div><span>Depositado</span><strong>{formatCurrency(depositedInPeriod)}</strong></div>
-        <div><span>Resultado previsto</span><strong className={forecastResultInPeriod < 0 ? "metric-negative" : "metric-positive"}>{formatCurrency(forecastResultInPeriod)}</strong></div>
+        {canViewFinance ? (
+          <>
+            <div><span>Proposto</span><strong>{formatCurrency(proposedInPeriod)}</strong></div>
+            <div><span>Depositado</span><strong>{formatCurrency(depositedInPeriod)}</strong></div>
+            <div><span>Resultado previsto</span><strong className={forecastResultInPeriod < 0 ? "metric-negative" : "metric-positive"}>{formatCurrency(forecastResultInPeriod)}</strong></div>
+          </>
+        ) : (
+          <>
+            <div><span>Processos ativos</span><strong>{activeProcesses.length}</strong></div>
+            <div><span>Laudos em andamento</span><strong>{reportsInProgress.length}</strong></div>
+            <div><span>Prazos próximos</span><strong>{upcomingDeadlines.length}</strong></div>
+          </>
+        )}
       </section>
 
+      {canViewFinance && (
       <section className="stats-grid dashboard-primary-stats">
         <article className="card stat-card dashboard-metric-card"><span>Homologado no período</span><strong>{formatCurrency(approvedInPeriod)}</strong><small>{portfolioApproved > 0 ? `${((approvedInPeriod / portfolioApproved) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% da carteira homologada` : "Sem carteira homologada"}</small></article>
         <article className="card stat-card dashboard-metric-card"><span>Levantado no período</span><strong>{formatCurrency(receivedInPeriod)}</strong><small>Receita efetivamente disponível</small></article>
         <article className="card stat-card dashboard-metric-card"><span>Custos realizados</span><strong>{formatCurrency(realizedCostsInPeriod)}</strong><small>{formatCurrency(expensesPaidInPeriod)} despesas + {formatCurrency(tripsCompletedInPeriod)} deslocamentos</small></article>
         <article className={`card stat-card dashboard-metric-card ${cashResultInPeriod < 0 ? "dashboard-metric-negative" : "dashboard-metric-positive"}`}><span>Resultado de caixa</span><strong>{formatCurrency(cashResultInPeriod)}</strong><small>Levantamentos menos custos pagos</small></article>
       </section>
+      )}
 
+      {canViewFinance && (
       <section className="card panel dashboard-portfolio-card">
         <div className="panel-header"><div><h2>{selectedProcess ? "Posição financeira do processo" : "Carteira financeira atual"}</h2><p>{selectedProcess ? `Valores acumulados do processo ${selectedProcess.process_number}.` : "Posição acumulada de todos os processos."}</p></div><Link href={feesHref}>Abrir honorários</Link></div>
         <div className="dashboard-portfolio-grid">
@@ -432,6 +459,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <div><span>Reembolsos pendentes</span><strong>{formatCurrency(portfolioReimbursements)}</strong><small>Valores ainda não recuperados</small></div>
         </div>
       </section>
+      )}
 
       <section className="dashboard-operational-grid">
         <Link className="card dashboard-operational-card" href={processesHref}><span>Processos ativos</span><strong>{activeProcesses.length}</strong><small>{urgentProcesses.length} com prioridade alta/urgente</small></Link>
@@ -439,11 +467,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <Link className="card dashboard-operational-card" href="/laudos"><span>Laudos em andamento</span><strong>{reportsInProgress.length}</strong><small>{scopedReports.filter((report) => report.status === "in_review").length} em revisão</small></Link>
         <Link className="card dashboard-operational-card" href="/agenda"><span>Prazos próximos</span><strong>{upcomingDeadlines.length}</strong><small>Vencimento nos próximos 7 dias</small></Link>
         <Link className="card dashboard-operational-card dashboard-operational-danger" href="/alertas"><span>Prazos vencidos</span><strong>{overdueDeadlines.length}</strong><small>Exigem tratamento imediato</small></Link>
-        <Link className="card dashboard-operational-card" href={feesHref}><span>Pendências financeiras</span><strong>{financialPending.length}</strong><small>Processos com fluxo incompleto</small></Link>
+        {canViewFinance && <Link className="card dashboard-operational-card" href={feesHref}><span>Pendências financeiras</span><strong>{financialPending.length}</strong><small>Processos com fluxo incompleto</small></Link>}
         <Link className="card dashboard-operational-card" href={processesHref}><span>Sem movimentação há 30 dias</span><strong>{staleProcesses.length}</strong><small>Revisar andamento e próximos atos</small></Link>
       </section>
 
       <section className="dashboard-grid dashboard-financial-grid">
+        {canViewFinance && (
         <article className="card panel">
           <div className="panel-header"><div><h2>{selectedProcess ? "Funil financeiro do processo" : "Funil financeiro da carteira"}</h2><p>Conversão entre proposta, homologação, depósito e levantamento.</p></div><Link href={feesHref}>Detalhar</Link></div>
           <FinancialFunnel items={[
@@ -453,6 +482,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             { label: "Levantado", value: portfolioReceived, help: "Receita efetivamente recebida", tone: "green" },
           ]} />
         </article>
+        )}
 
         <article className="card panel">
           <div className="panel-header"><div><h2>Distribuição dos processos</h2><p>{selectedProcess ? "Situação do processo selecionado." : "Situação atual da carteira."}</p></div><Link href={processesHref}>Ver processos</Link></div>
@@ -460,6 +490,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         </article>
       </section>
 
+      {canViewFinance && (
       <section className="dashboard-grid dashboard-analysis-grid">
         <article className="card panel">
           <div className="panel-header"><div><h2>Fluxo de caixa — últimos 6 meses</h2><p>Levantamentos confirmados versus custos realizados.</p></div><span className="dashboard-update-label">Atualizado agora</span></div>
@@ -471,6 +502,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <BreakdownBars items={expenseBreakdown} />
         </article>
       </section>
+      )}
 
       <section className="dashboard-grid dashboard-priority-grid">
         <article className="card panel">
@@ -512,6 +544,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         </article>
       </section>
 
+      {canViewFinance && (
       <section className="card panel dashboard-top-processes">
         <div className="panel-header"><div><h2>{selectedProcess ? "Resultado previsto do processo" : "Processos com maior resultado previsto"}</h2><p>Honorários homologados descontados dos custos previstos.</p></div><Link href={expensesHref}>Analisar custos</Link></div>
         {!topFinancialProcesses.length ? (
@@ -534,6 +567,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           </div>
         )}
       </section>
+      )}
     </>
   );
 }

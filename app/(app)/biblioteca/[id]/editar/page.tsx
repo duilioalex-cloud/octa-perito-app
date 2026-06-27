@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentOrganization } from "@/lib/current-organization";
+import { requireCurrentOrganization } from "@/lib/current-organization";
 import { updateTemplateAction } from "@/app/actions/templates";
 import { SubmitButton } from "@/components/submit-button";
 import { templateBody } from "@/lib/document-options";
 
 export const metadata = { title: "Editar modelo" };
 export default async function EditTemplatePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ success?: string; error?: string }> }) {
-  const { id } = await params; const query = await searchParams; const organization = await getCurrentOrganization(); if (!organization) return null; const supabase = await createClient();
+  const { id } = await params; const query = await searchParams; const organization = await requireCurrentOrganization("templates:write"); const supabase = await createClient();
   const { data: template } = await supabase.from("templates").select("*").eq("id", id).eq("organization_id", organization.id).eq("is_octa_model", false).maybeSingle();
   if (!template) notFound(); const action = updateTemplateAction.bind(null, id);
   return <><header className="page-header"><div><p className="eyebrow">PERSONALIZAÇÃO</p><h1>Editar modelo</h1><p>Ao salvar, uma nova versão será registrada.</p></div><Link className="button button-secondary" href={`/biblioteca/${id}`}>Cancelar</Link></header>{query.error && <div className="notice notice-error">{query.error}</div>}{query.success && <div className="notice notice-success">{query.success}</div>}<form className="card form-card form-card-wide" action={action}><div className="form-grid"><label className="field"><span>Título</span><input className="input" name="title" defaultValue={template.title} required /></label><label className="field"><span>Especialidade</span><input className="input" name="specialty" defaultValue={template.specialty || "Geral"} /></label><label className="field"><span>Categoria</span><select className="select" name="category" defaultValue={template.category}><option value="petition">Petição / manifestação</option><option value="report">Laudo</option><option value="opinion">Parecer</option><option value="checklist">Checklist</option><option value="technical_block">Bloco técnico</option></select></label><label className="field"><span>Tipo interno</span><input className="input" name="document_type" defaultValue={template.document_type || "personalizado"} /></label><label className="field full"><span>Descrição</span><input className="input" name="description" defaultValue={template.description || ""} /></label><label className="field full"><span>Referências — uma por linha</span><textarea className="textarea textarea-small" name="legal_basis" defaultValue={(template.legal_basis || []).join("\n")} /></label><label className="field full"><span>Conteúdo</span><textarea className="document-editor document-editor-medium" name="body" defaultValue={templateBody(template.content)} required /></label></div><div className="form-actions"><Link className="button button-secondary" href={`/biblioteca/${id}`}>Voltar</Link><SubmitButton pendingText="Salvando...">Salvar nova versão</SubmitButton></div></form></>;

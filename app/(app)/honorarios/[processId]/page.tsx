@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentOrganization } from "@/lib/current-organization";
+import { requireCurrentOrganization } from "@/lib/current-organization";
 import { SubmitButton } from "@/components/submit-button";
 import { DangerActionButton } from "@/components/danger-action-button";
 import {
@@ -44,8 +44,7 @@ export default async function ProcessFeesPage({
 }) {
   const { processId } = await params;
   const query = await searchParams;
-  const organization = await getCurrentOrganization();
-  if (!organization) return null;
+  const organization = await requireCurrentOrganization("finance:view");
   const supabase = await createClient();
 
   const [{ data: process }, { data: fee }, { data: summary }] = await Promise.all([

@@ -1,11 +1,13 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import type { MemberRole, Permission } from "@/lib/permissions";
+import { hasPermission } from "@/lib/permissions";
 
 export type CurrentOrganization = {
   id: string;
   name: string;
   slug: string;
-  role: "owner" | "admin" | "expert" | "assistant" | "viewer";
+  role: MemberRole;
 };
 
 export async function getCurrentUser() {
@@ -13,6 +15,13 @@ export async function getCurrentUser() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
   return user;
+}
+
+export async function requireCurrentOrganization(permission?: Permission): Promise<CurrentOrganization> {
+  const organization = await getCurrentOrganization();
+  if (!organization) redirect("/onboarding");
+  if (permission && !hasPermission(organization.role, permission)) redirect("/acesso-negado");
+  return organization;
 }
 
 export async function getCurrentOrganization(): Promise<CurrentOrganization | null> {

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentOrganization } from "@/lib/current-organization";
+import { requireCurrentOrganization } from "@/lib/current-organization";
 import { feeStatusLabel, financeStatusClass, FEE_STATUS_OPTIONS } from "@/lib/finance-options";
 import { formatCurrency } from "@/lib/process-options";
 
@@ -29,8 +29,7 @@ function num(value: number | string | null | undefined) {
 
 export default async function FeesPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; error?: string; success?: string }> }) {
   const query = await searchParams;
-  const organization = await getCurrentOrganization();
-  if (!organization) return null;
+  const organization = await requireCurrentOrganization("finance:view");
   const supabase = await createClient();
 
   const [{ data: dashboard }, { data: rows, error }] = await Promise.all([

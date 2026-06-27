@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { SubmitButton } from "@/components/submit-button";
 import { createProcessAction } from "@/app/actions/processes";
+import { requireCurrentOrganization } from "@/lib/current-organization";
 import { EXPERTISE_TYPE_OPTIONS, PRIORITY_OPTIONS, PROCESS_STATUS_OPTIONS } from "@/lib/process-options";
 
 export const metadata = { title: "Nova perícia" };
 
 export default async function NewProcessPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  await requireCurrentOrganization("processes:write");
   const params = await searchParams;
   return (
     <>

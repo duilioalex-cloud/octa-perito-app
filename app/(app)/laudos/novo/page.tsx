@@ -2,14 +2,13 @@ import Link from "next/link";
 import { createExpertReportAction } from "@/app/actions/reports";
 import { SubmitButton } from "@/components/submit-button";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentOrganization } from "@/lib/current-organization";
+import { requireCurrentOrganization } from "@/lib/current-organization";
 
 export const metadata = { title: "Novo laudo" };
 
 export default async function NewReportPage({ searchParams }: { searchParams: Promise<{ process?: string; error?: string }> }) {
   const query = await searchParams;
-  const organization = await getCurrentOrganization();
-  if (!organization) return null;
+  const organization = await requireCurrentOrganization("reports:write");
   const supabase = await createClient();
   const [{ data: processes }, { data: reportTypes }] = await Promise.all([
     supabase.from("processes").select("id,process_number,subject,expertise_area,status").eq("organization_id", organization.id).order("updated_at", { ascending: false }),

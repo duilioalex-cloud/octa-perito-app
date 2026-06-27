@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentOrganization } from "@/lib/current-organization";
+import { requireCurrentOrganization } from "@/lib/current-organization";
 import { formatCurrency } from "@/lib/process-options";
 
 export const metadata = { title: "Despesas e deslocamentos" };
@@ -27,8 +27,7 @@ function num(value: number | string | null | undefined) {
 
 export default async function ExpensesPage({ searchParams }: { searchParams: Promise<{ q?: string; filter?: string; error?: string; success?: string }> }) {
   const query = await searchParams;
-  const organization = await getCurrentOrganization();
-  if (!organization) return null;
+  const organization = await requireCurrentOrganization("finance:view");
   const supabase = await createClient();
 
   const [{ data: dashboard }, { data: rows, error }] = await Promise.all([

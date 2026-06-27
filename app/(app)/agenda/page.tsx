@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentOrganization } from "@/lib/current-organization";
+import { hasPermission } from "@/lib/permissions";
 import { alertLevelClass, alertLevelFor, alertLevelLabel, eventStatusClass, eventStatusLabel, eventTypeIcon, eventTypeLabel, EVENT_STATUS_OPTIONS, EVENT_TYPE_OPTIONS } from "@/lib/calendar-options";
 import { formatDateTime, priorityLabel } from "@/lib/process-options";
 
@@ -66,6 +67,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   const query = await searchParams;
   const organization = await getCurrentOrganization();
   if (!organization) return null;
+  const canCreateEvent = hasPermission(organization.role, "calendar:write");
   const supabase = await createClient();
   const monthStart = startOfMonth(query.month);
   const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1);
@@ -117,7 +119,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
     <>
       <header className="page-header">
         <div><p className="eyebrow">ORGANIZAÇÃO PERICIAL</p><h1>Agenda pericial</h1><p>Diligências, vistorias, audiências, prazos e vencimentos vinculados aos processos.</p></div>
-        <div className="header-actions"><Link className="button button-secondary" href="/alertas">Central de alertas</Link><Link className="button button-primary" href="/agenda/novo">+ Novo compromisso</Link></div>
+        <div className="header-actions"><Link className="button button-secondary" href="/alertas">Central de alertas</Link>{canCreateEvent && <Link className="button button-primary" href="/agenda/novo">+ Novo compromisso</Link>}</div>
       </header>
 
       {query.success && <div className="notice notice-success">{query.success}</div>}
