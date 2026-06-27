@@ -53,17 +53,45 @@ type MemberRow = {
   invited_email: string | null;
 };
 
+type SaleRow = {
+  id: string;
+  status: string;
+  buyer_name: string;
+  buyer_email: string;
+  organization_name: string;
+  plan_code: string | null;
+  amount_cents: number | null;
+  checkout_url: string | null;
+  organization_id: string | null;
+  paid_at: string | null;
+  failed_at: string | null;
+  created_at: string;
+};
+
+const saleStatusLabels: Record<string, string> = {
+  pending: "Pendente",
+  checkout_created: "Checkout criado",
+  paid: "Pago",
+  provisioned: "Provisionado",
+  failed: "Falhou",
+  cancelled: "Cancelado",
+};
+
 function formatCurrencyFromCents(value?: number | null) {
   return ((value ?? 0) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 function formatDate(value?: string | null) {
   if (!value) return "-";
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(new Date(value));
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 }
 
 function statusClass(status: BillingStatus) {
   return `admin-billing-status admin-billing-status-${status}`;
+}
+
+function saleStatusClass(status: string) {
+  return `admin-sale-status admin-sale-status-${status}`;
 }
 
 export default async function AdminPage({ searchParams }: AdminPageProps) {
@@ -81,7 +109,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
   const organizations = (organizationsData ?? []) as OrganizationRow[];
   const ownerIds = Array.from(new Set(organizations.map((org) => org.owner_id).filter(Boolean))) as string[];
 
-  const [profilesResult, subscriptionsResult, paymentsResult, membersResult] = await Promise.all([
+  const [profilesResult, subscriptionsResult, paymentsResult, membersResult, salesResult] = await Promise.all([
     ownerIds.length
       ? admin.from("profiles").select("id,full_name,email").in("id", ownerIds)
       : Promise.resolve({ data: [] as ProfileRow[], error: null }),
@@ -91,14 +119,21 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
       .order("created_at", { ascending: false }),
     admin.from("payments").select("organization_id,status,amount_cents,paid_at,due_at").order("created_at", { ascending: false }),
     admin.from("organization_members").select("organization_id,user_id,invited_email"),
+    admin
+      .from("sales_checkout_sessions")
+      .select("id,status,buyer_name,buyer_email,organization_name,plan_code,amount_cents,checkout_url,organization_id,paid_at,failed_at,created_at")
+      .order("created_at", { ascending: false })
+      .limit(20),
   ]);
 
   const profiles = (profilesResult.data ?? []) as ProfileRow[];
   const subscriptions = (subscriptionsResult.data ?? []) as SubscriptionRow[];
   const payments = (paymentsResult.data ?? []) as PaymentRow[];
   const members = (membersResult.data ?? []) as MemberRow[];
+  const sales = (salesResult.data ?? []) as SaleRow[];
 
   const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+  const organizationById = new Map(organizations.map((organization) => [organization.id, organization]));
   const subscriptionByOrg = new Map<string, SubscriptionRow>();
   for (const subscription of subscriptions) {
     if (!subscriptionByOrg.has(subscription.organization_id)) subscriptionByOrg.set(subscription.organization_id, subscription);
@@ -125,7 +160,8 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
     profilesResult.error?.message ||
     subscriptionsResult.error?.message ||
     paymentsResult.error?.message ||
-    membersResult.error?.message;
+    membersResult.error?.message ||
+    salesResult.error?.message;
 
   return (
     <section className="page-section admin-page">
@@ -133,7 +169,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
         <div>
           <p className="eyebrow">Admin SaaS</p>
           <h1>Painel administrativo</h1>
-          <p>Controle clientes, assinaturas, bloqueios e liberacoes do OCTA Perito.</p>
+          <p>Controle clientes, assinaturas, compras, bloqueios e liberacoes do OCTA Perito.</p>
         </div>
         <div className="header-actions">
           <Link className="button button-secondary" href="/configuracoes/usuarios">Usuarios do escritorio</Link>
@@ -145,8 +181,8 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
       {query.success && <div className="notice notice-success">{query.success}</div>}
       {loadError && (
         <div className="notice notice-error">
-          Nao foi possivel carregar todos os dados administrativos. Confirme se a migracao 011_saas_admin_billing.sql foi
-          executada no Supabase. Detalhe: {loadError}
+          Nao foi possivel carregar todos os dados administrativos. Confirme se as migracoes 011 e 012 foram executadas
+          no Supabase. Detalhe: {loadError}
         </div>
       )}
 
@@ -244,6 +280,76 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
                     <div className="empty-state">
                       <strong>Nenhum cliente encontrado</strong>
                       <span>Os escritorios cadastrados aparecerao aqui.</span>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="card panel admin-control-panel">
+        <div className="panel-header">
+          <div>
+            <h2>Compras recentes</h2>
+            <p>Pedidos criados pelo site de vendas e processados pela Abacate Pay.</p>
+          </div>
+        </div>
+
+        <div className="responsive-table admin-sales-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Comprador</th>
+                <th>Escritorio</th>
+                <th>Status</th>
+                <th>Plano</th>
+                <th>Data</th>
+                <th>Checkout</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sales.map((sale) => {
+                const linkedOrganization = sale.organization_id ? organizationById.get(sale.organization_id) : null;
+                return (
+                  <tr key={sale.id}>
+                    <td>
+                      <strong className="admin-client-name">{sale.buyer_name}</strong>
+                      <span className="admin-client-meta">{sale.buyer_email}</span>
+                    </td>
+                    <td>
+                      <strong className="admin-client-owner">{linkedOrganization?.name || sale.organization_name}</strong>
+                      <span className="admin-client-meta">{sale.organization_id ? "Cliente criado" : "Aguardando provisionamento"}</span>
+                    </td>
+                    <td>
+                      <span className={saleStatusClass(sale.status)}>{saleStatusLabels[sale.status] || sale.status}</span>
+                    </td>
+                    <td>
+                      <strong className="admin-money">{formatCurrencyFromCents(sale.amount_cents)}</strong>
+                      <span className="admin-client-meta">{sale.plan_code || "octa-perito-mensal"}</span>
+                    </td>
+                    <td>
+                      <strong className="admin-client-owner">{formatDate(sale.paid_at || sale.failed_at || sale.created_at)}</strong>
+                    </td>
+                    <td>
+                      {sale.checkout_url ? (
+                        <a className="button button-secondary button-small" href={sale.checkout_url} target="_blank" rel="noreferrer">
+                          Abrir
+                        </a>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {!sales.length && (
+                <tr>
+                  <td colSpan={6}>
+                    <div className="empty-state">
+                      <strong>Nenhuma compra registrada</strong>
+                      <span>As vendas criadas pelo endpoint de checkout aparecerao aqui.</span>
                     </div>
                   </td>
                 </tr>

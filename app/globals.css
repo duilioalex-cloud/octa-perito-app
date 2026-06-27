@@ -1157,3 +1157,21 @@ select option:disabled,
   .billing-blocked-card{padding:23px}
   .billing-blocked-card h1{font-size:1.75rem}
 }
+
+/* OCTA Perito v0.8.5 - vendas Abacate Pay */
+.admin-sales-table table{min-width:980px}
+.admin-sale-status{display:inline-flex;width:max-content;align-items:center;padding:6px 9px;border-radius:999px;font-size:.56rem;font-weight:950;text-transform:uppercase;letter-spacing:.035em}
+.admin-sale-status-pending{color:#d5e6f2;background:rgba(174,205,231,.1)}
+.admin-sale-status-checkout_created{color:#d9dcff;background:rgba(117,134,255,.12)}
+.admin-sale-status-paid,.admin-sale-status-provisioned{color:#c9fff1;background:rgba(66,223,186,.11)}
+.admin-sale-status-failed,.admin-sale-status-cancelled{color:#ffd9dd;background:rgba(255,127,140,.13)}
+.purchase-success-page{min-height:100vh;display:grid;place-items:center;padding:28px;background:radial-gradient(circle at 15% 10%,rgba(66,223,186,.14),transparent 34%),var(--bg)}
+.purchase-success-card{width:min(720px,100%);padding:36px}
+.purchase-success-card h1{margin:0;font-size:2.35rem;letter-spacing:-.04em}
+.purchase-success-card p:not(.eyebrow){max-width:620px;margin:12px 0 0;color:var(--muted);line-height:1.6}
+.purchase-success-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
+@media(max-width:620px){
+  .purchase-success-card{padding:26px}
+  .purchase-success-card h1{font-size:1.85rem}
+  .purchase-success-actions .button{width:100%}
+}
