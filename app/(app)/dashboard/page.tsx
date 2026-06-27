@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentOrganization } from "@/lib/current-organization";
-import { deadlineCategoryLabel, formatCurrency, formatDateTime, processStatusLabel } from "@/lib/process-options";
+import { eventTypeIcon, eventTypeLabel } from "@/lib/calendar-options";
+import { formatCurrency, formatDateTime, processStatusLabel } from "@/lib/process-options";
 
 export const metadata = { title: "Visão geral" };
 
@@ -9,7 +10,9 @@ export default async function DashboardPage() {
   const organization = await getCurrentOrganization();
   if (!organization) return null;
   const supabase = await createClient();
-  const now = new Date().toISOString();
+  const nowDate = new Date();
+  const now = nowDate.toISOString();
+  const nextSeven = new Date(nowDate.getTime() + 7 * 86400000).toISOString();
 
   const [
     { count: activeCount },
@@ -17,14 +20,16 @@ export default async function DashboardPage() {
     { data: financialProcesses },
     { count: templateCount },
     { data: latestProcesses },
-    { data: upcomingDeadlines },
+    { data: upcomingEvents },
+    { count: alertCount },
   ] = await Promise.all([
     supabase.from("processes").select("id", { count: "exact", head: true }).eq("organization_id", organization.id).neq("status", "closed"),
-    supabase.from("process_deadlines").select("id", { count: "exact", head: true }).eq("organization_id", organization.id).eq("status", "pending").lt("due_at", now),
+    supabase.from("calendar_events").select("id", { count: "exact", head: true }).eq("organization_id", organization.id).not("status", "in", "(completed,cancelled)").lt("starts_at", now),
     supabase.from("processes").select("fee_arbitrated, fee_deposited, fee_received").eq("organization_id", organization.id),
     supabase.from("templates").select("id", { count: "exact", head: true }).or(`is_octa_model.eq.true,organization_id.eq.${organization.id}`),
     supabase.from("processes").select("id, process_number, plaintiff, defendant, status, priority, report_due_at, fee_arbitrated").eq("organization_id", organization.id).order("created_at", { ascending: false }).limit(5),
-    supabase.from("process_deadlines").select("id, title, category, due_at, priority, processes(id, process_number)").eq("organization_id", organization.id).eq("status", "pending").gte("due_at", now).order("due_at", { ascending: true }).limit(6),
+    supabase.from("calendar_events").select("id,title,event_type,starts_at,priority,location_name,city,processes(id,process_number)").eq("organization_id", organization.id).not("status", "in", "(completed,cancelled)").gte("starts_at", now).order("starts_at", { ascending: true }).limit(6),
+    supabase.from("calendar_events").select("id", { count: "exact", head: true }).eq("organization_id", organization.id).not("status", "in", "(completed,cancelled)").lte("starts_at", nextSeven),
   ]);
 
   const totals = (financialProcesses ?? []).reduce(
@@ -39,31 +44,31 @@ export default async function DashboardPage() {
   return (
     <>
       <header className="page-header">
-        <div><p className="eyebrow">VISÃO GERAL</p><h1>Seu escritório em controle</h1><p>Processos, prazos e honorários consolidados em um único painel.</p></div>
-        <Link className="button button-primary" href="/processos/novo">+ Nova perícia</Link>
+        <div><p className="eyebrow">VISÃO GERAL</p><h1>Seu escritório em controle</h1><p>Processos, agenda, alertas e honorários consolidados em um único painel.</p></div>
+        <div className="header-actions"><Link className="button button-secondary" href="/agenda/novo">+ Agendar</Link><Link className="button button-primary" href="/processos/novo">+ Nova perícia</Link></div>
       </header>
 
       <section className="stats-grid">
-        <article className="card stat-card"><span>Perícias ativas</span><strong>{activeCount ?? 0}</strong><small>{overdueCount ?? 0} prazo(s) vencido(s)</small></article>
-        <article className="card stat-card"><span>Honorários arbitrados</span><strong>{formatCurrency(totals.arbitrated)}</strong><small>{formatCurrency(totals.deposited)} depositados</small></article>
-        <article className="card stat-card"><span>Honorários recebidos</span><strong>{formatCurrency(totals.received)}</strong><small>Controle financeiro básico</small></article>
+        <article className="card stat-card"><span>Perícias ativas</span><strong>{activeCount ?? 0}</strong><small>{overdueCount ?? 0} compromisso(s) vencido(s)</small></article>
+        <article className="card stat-card"><span>Alertas nos próximos 7 dias</span><strong>{alertCount ?? 0}</strong><small><Link href="/alertas">Abrir central de alertas</Link></small></article>
+        <article className="card stat-card"><span>Honorários recebidos</span><strong>{formatCurrency(totals.received)}</strong><small>{formatCurrency(totals.deposited)} depositados</small></article>
         <article className="card stat-card"><span>Modelos técnicos</span><strong>{templateCount ?? 0}</strong><small>Biblioteca disponível</small></article>
       </section>
 
       <section className="dashboard-grid">
         <article className="card panel">
-          <div className="panel-header"><h2>Próximos prazos</h2><Link href="/processos">Ver processos</Link></div>
-          {!upcomingDeadlines?.length ? (
-            <div className="empty-state"><strong>Nenhum prazo futuro cadastrado.</strong>Cadastre prazos dentro de cada processo.</div>
+          <div className="panel-header"><h2>Próximos compromissos</h2><Link href="/agenda">Abrir agenda</Link></div>
+          {!upcomingEvents?.length ? (
+            <div className="empty-state"><strong>Nenhum compromisso futuro cadastrado.</strong>Cadastre diligências, vistorias, audiências e prazos na agenda.</div>
           ) : (
             <div className="deadline-list">
-              {upcomingDeadlines.map((deadline) => {
-                const related = Array.isArray(deadline.processes) ? deadline.processes[0] : deadline.processes;
+              {upcomingEvents.map((event) => {
+                const related = Array.isArray(event.processes) ? event.processes[0] : event.processes;
                 return (
-                  <Link className="deadline-row" href={`/processos/${related?.id ?? ""}`} key={deadline.id}>
-                    <div><strong>{deadline.title}</strong><span>{related?.process_number ?? "Processo"} · {deadlineCategoryLabel(deadline.category)}</span></div>
-                    <div className="deadline-date"><small>Vencimento</small><b>{formatDateTime(deadline.due_at)}</b></div>
-                    <span className={`priority priority-${deadline.priority}`}>{deadline.priority}</span>
+                  <Link className="deadline-row" href={`/agenda/${event.id}`} key={event.id}>
+                    <div><strong>{eventTypeIcon(event.event_type)} {event.title}</strong><span>{eventTypeLabel(event.event_type)}{related?.process_number ? ` · ${related.process_number}` : ""}{event.location_name || event.city ? ` · ${event.location_name || event.city}` : ""}</span></div>
+                    <div className="deadline-date"><small>Data</small><b>{formatDateTime(event.starts_at)}</b></div>
+                    <span className={`priority priority-${event.priority}`}>{event.priority}</span>
                   </Link>
                 );
               })}
@@ -75,8 +80,8 @@ export default async function DashboardPage() {
           <div className="panel-header"><h2>Ações rápidas</h2></div>
           <div className="quick-actions">
             <Link className="quick-action" href="/processos/novo"><span>Cadastrar nova perícia</span><b>→</b></Link>
-            <Link className="quick-action" href="/processos"><span>Consultar processos</span><b>→</b></Link>
-            <Link className="quick-action" href="/biblioteca"><span>Acessar modelos técnicos</span><b>→</b></Link>
+            <Link className="quick-action" href="/agenda/novo"><span>Agendar diligência ou prazo</span><b>→</b></Link>
+            <Link className="quick-action" href="/alertas"><span>Consultar alertas e pendências</span><b>→</b></Link>
             <Link className="quick-action" href="/honorarios"><span>Consultar honorários</span><b>→</b></Link>
           </div>
         </article>

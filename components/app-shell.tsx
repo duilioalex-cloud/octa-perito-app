@@ -11,6 +11,8 @@ const navItems = [
   ["/laudos", "Laudos", "▥"],
   ["/honorarios", "Honorários", "◇"],
   ["/despesas", "Despesas", "▦"],
+  ["/agenda", "Agenda", "◷"],
+  ["/alertas", "Alertas", "!"],
   ["/configuracoes", "Configurações", "⚙"],
 ] as const;
 
