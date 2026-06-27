@@ -43,6 +43,13 @@ function statusLabel(member: MemberRow) {
   return "Convite pendente";
 }
 
+function statusClass(member: MemberRow) {
+  if (member.user_id && member.joined_at) return "users-status-active";
+  if (member.user_id) return "users-status-created";
+  if (member.invitation_status === "sent") return "users-status-sent";
+  return "users-status-pending";
+}
+
 export default async function OrganizationUsersPage({ searchParams }: UsersPageProps) {
   const query = await searchParams;
   const organization = await requireCurrentOrganization("users:manage");
@@ -68,6 +75,10 @@ export default async function OrganizationUsersPage({ searchParams }: UsersPageP
 
   const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
   const loadError = membersError?.message || profilesError?.message;
+  const activeCount = members.filter((member) => member.user_id).length;
+  const inviteCount = members.filter((member) => !member.user_id).length;
+  const managerCount = members.filter((member) => ["owner", "admin"].includes(member.role)).length;
+  const financeCount = members.filter((member) => ["owner", "admin", "expert", "financial"].includes(member.role)).length;
 
   return (
     <section className="page-section">
@@ -89,32 +100,61 @@ export default async function OrganizationUsersPage({ searchParams }: UsersPageP
         </div>
       )}
 
-      <div className="form-card">
-        <h2>Convidar usuario</h2>
-        <form action={inviteOrganizationMemberAction} className="form-grid">
-          <label>
-            Nome
-            <input name="full_name" placeholder="Nome completo" required />
-          </label>
-          <label>
-            E-mail
-            <input name="email" type="email" placeholder="usuario@email.com" required />
-          </label>
-          <label>
-            Nivel de acesso
-            <select name="role" defaultValue="assistant">
-              {memberRoles.filter((role) => role !== "owner").map((role) => (
-                <option key={role} value={role}>{roleLabels[role]}</option>
-              ))}
-            </select>
-          </label>
-          <div className="form-actions">
-            <button className="button button-primary" type="submit">Enviar convite</button>
-          </div>
-        </form>
-      </div>
+      <section className="users-summary-grid">
+        <article className="card users-summary-card"><span>Ativos</span><strong>{activeCount}</strong><small>Contas com acesso ao escritorio</small></article>
+        <article className="card users-summary-card"><span>Convites</span><strong>{inviteCount}</strong><small>Pendentes ou enviados</small></article>
+        <article className="card users-summary-card"><span>Gestores</span><strong>{managerCount}</strong><small>Proprietario e administradores</small></article>
+        <article className="card users-summary-card"><span>Financeiro</span><strong>{financeCount}</strong><small>Perfis com acesso financeiro</small></article>
+      </section>
 
-      <div className="table-card">
+      <section className="users-admin-grid">
+        <div className="card panel users-invite-card">
+          <div className="panel-header">
+            <div>
+              <h2>Convidar usuario</h2>
+              <p>O convite sera enviado para o e-mail informado.</p>
+            </div>
+          </div>
+          <form action={inviteOrganizationMemberAction} className="users-invite-form">
+            <label className="field">
+              <span>Nome completo</span>
+              <input className="input" name="full_name" placeholder="Ex.: Maria Oliveira" required />
+            </label>
+            <label className="field">
+              <span>E-mail</span>
+              <input className="input" name="email" type="email" placeholder="usuario@email.com" required />
+            </label>
+            <label className="field">
+              <span>Nivel de acesso</span>
+              <select className="select" name="role" defaultValue="assistant">
+                {memberRoles.filter((role) => role !== "owner").map((role) => (
+                  <option key={role} value={role}>{roleLabels[role]}</option>
+                ))}
+              </select>
+            </label>
+            <div className="users-invite-actions">
+              <button className="button button-primary" type="submit">Enviar convite</button>
+            </div>
+          </form>
+        </div>
+
+        <aside className="card panel users-role-card">
+          <div className="panel-header">
+            <div>
+              <h2>Niveis principais</h2>
+              <p>Resumo rapido das permissoes.</p>
+            </div>
+          </div>
+          <div className="users-role-list">
+            <div><strong>Proprietario / Administrador</strong><span>Acesso total e gestao de usuarios.</span></div>
+            <div><strong>Perito</strong><span>Operacional completo e financeiro liberado.</span></div>
+            <div><strong>Financeiro</strong><span>Honorarios, despesas e consulta de processos.</span></div>
+            <div><strong>Assistente / Consulta</strong><span>Sem acesso ao financeiro.</span></div>
+          </div>
+        </aside>
+      </section>
+
+      <div className="table-card users-table-card">
         <div className="table-header">
           <div>
             <h2>Equipe do escritorio</h2>
@@ -142,26 +182,26 @@ export default async function OrganizationUsersPage({ searchParams }: UsersPageP
 
                 return (
                   <tr key={member.user_id || member.invited_email || member.created_at}>
-                    <td>{displayName}</td>
-                    <td>{displayEmail}</td>
+                    <td><strong className="users-name">{displayName}</strong></td>
+                    <td><span className="users-email">{displayEmail}</span></td>
                     <td>
                       {canEdit ? (
                         <form action={updateOrganizationMemberRoleAction} className="inline-form">
                           <input type="hidden" name="user_id" value={member.user_id || ""} />
                           <input type="hidden" name="invited_email" value={member.invited_email || ""} />
                           <input type="hidden" name="current_role" value={member.role} />
-                          <select name="role" defaultValue={member.role}>
+                          <select className="select select-small" name="role" defaultValue={member.role}>
                             {memberRoles.filter((role) => role !== "owner").map((role) => (
                               <option key={role} value={role}>{roleLabels[role]}</option>
                             ))}
                           </select>
-                          <button className="button button-secondary" type="submit">Salvar</button>
+                          <button className="button button-secondary button-small" type="submit">Salvar</button>
                         </form>
                       ) : (
-                        roleLabels[member.role]
+                        <span className="users-role-badge">{roleLabels[member.role]}</span>
                       )}
                     </td>
-                    <td>{statusLabel(member)}</td>
+                    <td><span className={`users-status ${statusClass(member)}`}>{statusLabel(member)}</span></td>
                     <td>{formatDate(member.last_seen_at || member.joined_at)}</td>
                     <td>
                       {canEdit ? (
@@ -170,14 +210,14 @@ export default async function OrganizationUsersPage({ searchParams }: UsersPageP
                             <form action={resendOrganizationInviteAction}>
                               <input type="hidden" name="invited_email" value={member.invited_email} />
                               <input type="hidden" name="current_role" value={member.role} />
-                              <button className="button button-secondary" type="submit">Reenviar</button>
+                              <button className="button button-secondary button-small" type="submit">Reenviar</button>
                             </form>
                           )}
                           <form action={removeOrganizationMemberAction}>
                             <input type="hidden" name="user_id" value={member.user_id || ""} />
                             <input type="hidden" name="invited_email" value={member.invited_email || ""} />
                             <input type="hidden" name="current_role" value={member.role} />
-                            <button className="button button-danger" type="submit">Remover</button>
+                            <button className="button button-danger button-small" type="submit">Remover</button>
                           </form>
                         </div>
                       ) : (
