@@ -4,7 +4,7 @@ import { signOutAction } from "@/app/actions/auth";
 import type { CurrentOrganization } from "@/lib/current-organization";
 
 const navItems = [
-  ["/dashboard", "Visão geral", "⌂"],
+  ["/dashboard", "Painel", "⌂"],
   ["/processos", "Processos", "▣"],
   ["/biblioteca", "Biblioteca técnica", "▤"],
   ["/documentos", "Documentos", "▧"],
