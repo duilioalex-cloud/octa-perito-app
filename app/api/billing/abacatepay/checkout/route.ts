@@ -2,13 +2,16 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import {
   createAbacatePayCustomer,
+  createAbacatePayOneTimeCheckout,
   createAbacatePaySubscriptionCheckout,
-  getAbacatePayConfig,
+  getAbacatePayPlanConfig,
   getCheckoutUrl,
+  type AbacatePayPlanKind,
 } from "@/lib/abacatepay";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type CheckoutInput = {
+  plan: AbacatePayPlanKind;
   buyerName: string;
   buyerEmail: string;
   buyerPhone?: string;
@@ -34,11 +37,18 @@ function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
 }
 
+function normalizePlan(value: unknown): AbacatePayPlanKind {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["annual", "anual", "yearly", "year", "ano"].includes(normalized)) return "annual";
+  return "monthly";
+}
+
 async function readInput(request: Request): Promise<CheckoutInput> {
   const contentType = request.headers.get("content-type") || "";
   if (contentType.includes("application/json")) {
     const body = (await request.json()) as Record<string, unknown>;
     return {
+      plan: normalizePlan(body.plan || body.billingPlan || body.planCode),
       buyerName: String(body.buyerName || body.name || "").trim(),
       buyerEmail: normalizeEmail(String(body.buyerEmail || body.email || "")),
       buyerPhone: String(body.buyerPhone || body.phone || "").trim() || undefined,
@@ -53,6 +63,7 @@ async function readInput(request: Request): Promise<CheckoutInput> {
 
   const form = await request.formData();
   return {
+    plan: normalizePlan(form.get("plan") || form.get("billingPlan") || form.get("planCode")),
     buyerName: String(form.get("buyerName") || form.get("name") || "").trim(),
     buyerEmail: normalizeEmail(String(form.get("buyerEmail") || form.get("email") || "")),
     buyerPhone: String(form.get("buyerPhone") || form.get("phone") || "").trim() || undefined,
@@ -82,9 +93,15 @@ export async function POST(request: Request) {
   const validationError = validateInput(input);
   if (validationError) return NextResponse.json({ error: validationError }, { status: 400, headers });
 
-  const config = getAbacatePayConfig();
-  if (!config.productId) {
-    return NextResponse.json({ error: "Configure ABACATEPAY_PRODUCT_ID na Vercel." }, { status: 500, headers });
+  const plan = getAbacatePayPlanConfig(input.plan);
+  if (plan.mode === "subscription" && !plan.productId) {
+    return NextResponse.json(
+      { error: "Configure ABACATEPAY_MONTHLY_PRODUCT_ID ou ABACATEPAY_PRODUCT_ID na Vercel." },
+      { status: 500, headers },
+    );
+  }
+  if (plan.amountCents <= 0) {
+    return NextResponse.json({ error: `Configure o valor do plano ${plan.planCode} na Vercel.` }, { status: 500, headers });
   }
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
@@ -102,13 +119,19 @@ export async function POST(request: Request) {
     buyer_document: input.buyerDocument || null,
     organization_name: input.organizationName,
     organization_document: input.organizationDocument || input.buyerDocument || null,
-    plan_code: config.planCode,
-    amount_cents: config.amountCents,
+    plan_code: plan.planCode,
+    amount_cents: plan.amountCents,
     currency: "BRL",
     provider: "abacatepay",
     completion_url: completionUrl,
     return_url: returnUrl,
-    metadata: input.metadata || {},
+    metadata: {
+      ...(input.metadata || {}),
+      billing_plan_kind: plan.kind,
+      checkout_mode: plan.mode,
+      access_months: plan.accessMonths,
+      max_installments: plan.maxInstallments || null,
+    },
   });
   if (sessionError) {
     return NextResponse.json(
@@ -126,14 +149,34 @@ export async function POST(request: Request) {
     });
     if (!customer.id) throw new Error("A Abacate Pay nao retornou o ID do cliente.");
 
-    const checkout = await createAbacatePaySubscriptionCheckout({
-      customerId: customer.id,
-      productId: config.productId,
-      externalId: sessionId,
-      completionUrl,
-      returnUrl,
-      methods: config.methods,
-    });
+    const checkout =
+      plan.mode === "checkout"
+        ? await createAbacatePayOneTimeCheckout({
+            customerId: customer.id,
+            customer: {
+              name: input.buyerName,
+              email: input.buyerEmail,
+              cellphone: input.buyerPhone,
+              taxId: input.buyerDocument,
+            },
+            plan,
+            externalId: sessionId,
+            completionUrl,
+            returnUrl,
+            metadata: {
+              sale_id: sessionId,
+              plan_code: plan.planCode,
+              access_months: plan.accessMonths,
+            },
+          })
+        : await createAbacatePaySubscriptionCheckout({
+            customerId: customer.id,
+            productId: plan.productId as string,
+            externalId: sessionId,
+            completionUrl,
+            returnUrl,
+            methods: plan.methods,
+          });
 
     const checkoutUrl = getCheckoutUrl(checkout);
     if (!checkoutUrl) throw new Error("A Abacate Pay nao retornou a URL do checkout.");
@@ -145,6 +188,13 @@ export async function POST(request: Request) {
         provider_customer_id: customer.id || null,
         provider_checkout_id: checkout.id || null,
         checkout_url: checkoutUrl,
+        metadata: {
+          ...(input.metadata || {}),
+          billing_plan_kind: plan.kind,
+          checkout_mode: plan.mode,
+          access_months: plan.accessMonths,
+          max_installments: plan.maxInstallments || null,
+        },
         updated_at: new Date().toISOString(),
       })
       .eq("id", sessionId);
@@ -155,7 +205,19 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "Nao foi possivel criar o checkout.";
     await admin
       .from("sales_checkout_sessions")
-      .update({ status: "failed", failed_at: new Date().toISOString(), metadata: { error: message }, updated_at: new Date().toISOString() })
+      .update({
+        status: "failed",
+        failed_at: new Date().toISOString(),
+        metadata: {
+          ...(input.metadata || {}),
+          billing_plan_kind: plan.kind,
+          checkout_mode: plan.mode,
+          access_months: plan.accessMonths,
+          max_installments: plan.maxInstallments || null,
+          error: message,
+        },
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", sessionId);
 
     return NextResponse.json({ error: message, sessionId }, { status: 500, headers });

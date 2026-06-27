@@ -104,6 +104,16 @@ function saleStatusClass(status: string) {
   return `admin-sale-status admin-sale-status-${status}`;
 }
 
+function isAnnualPlan(planCode?: string | null) {
+  const normalized = (planCode || "").toLowerCase();
+  return normalized.includes("anual") || normalized.includes("annual") || normalized.includes("year");
+}
+
+function monthlyRevenueShare(subscription: SubscriptionRow) {
+  const amount = subscription.amount_cents ?? 0;
+  return isAnnualPlan(subscription.plan_code) ? Math.round(amount / 12) : amount;
+}
+
 export default async function AdminPage({ searchParams }: AdminPageProps) {
   const query = await searchParams;
   await requirePlatformAdmin();
@@ -170,7 +180,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
   const pastDueCount = organizations.filter((org) => normalizeBillingStatus(org.billing_status) === "past_due").length;
   const monthlyRevenueCents = subscriptions
     .filter((subscription) => ["active", "trialing", "past_due"].includes(normalizeBillingStatus(subscription.status)))
-    .reduce((sum, subscription) => sum + (subscription.amount_cents ?? 0), 0);
+    .reduce((sum, subscription) => sum + monthlyRevenueShare(subscription), 0);
   const loadError =
     organizationsError?.message ||
     profilesResult.error?.message ||
@@ -207,7 +217,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
         <article className="card admin-summary-card"><span>Clientes</span><strong>{organizations.length}</strong><small>Escritorios cadastrados</small></article>
         <article className="card admin-summary-card"><span>Ativos</span><strong>{activeCount}</strong><small>Pagantes ou em teste</small></article>
         <article className="card admin-summary-card"><span>Atencao</span><strong>{pastDueCount + blockedCount}</strong><small>Vencidos ou bloqueados</small></article>
-        <article className="card admin-summary-card"><span>Receita mensal</span><strong>{formatCurrencyFromCents(monthlyRevenueCents)}</strong><small>Base informada nas assinaturas</small></article>
+        <article className="card admin-summary-card"><span>Receita mensal</span><strong>{formatCurrencyFromCents(monthlyRevenueCents)}</strong><small>Mensalidade e anual dividido por 12</small></article>
       </section>
 
       <section className="card panel admin-control-panel">

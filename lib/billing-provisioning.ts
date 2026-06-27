@@ -82,6 +82,24 @@ function addMonths(date: Date, months: number) {
   return result.toISOString();
 }
 
+function getSaleAccessMonths(sale: SaleCheckoutSession) {
+  const metadata = sale.metadata || {};
+  const metadataMonths = readNumber(metadata.access_months, metadata.accessMonths);
+  if (metadataMonths && metadataMonths > 0) return Math.min(Math.round(metadataMonths), 120);
+
+  const planCode = (sale.plan_code || "").toLowerCase();
+  if (planCode.includes("anual") || planCode.includes("annual") || planCode.includes("year")) return 12;
+  return 1;
+}
+
+function getProviderSubscriptionId(sale: SaleCheckoutSession, ids: WebhookIds) {
+  return ids.subscriptionId || sale.provider_subscription_id || `checkout-${sale.id}`;
+}
+
+function getProviderPaymentId(sale: SaleCheckoutSession, ids: WebhookIds) {
+  return ids.paymentId || `checkout-payment-${sale.id}`;
+}
+
 export function extractAbacatePayWebhookIds(payload: unknown): WebhookIds {
   const root = asRecord(payload);
   const data = asRecord(root.data);
@@ -224,7 +242,7 @@ async function createOrganizationForSale(admin: AdminClient, sale: SaleCheckoutS
     billing_plan: sale.plan_code || "octa-perito-mensal",
     billing_blocked_at: null,
     billing_block_reason: null,
-    billing_current_period_ends_at: addMonths(new Date(), 1),
+    billing_current_period_ends_at: addMonths(new Date(), getSaleAccessMonths(sale)),
     updated_at: new Date().toISOString(),
   };
 
@@ -267,7 +285,10 @@ async function ensureOwnerMembership(admin: AdminClient, sale: SaleCheckoutSessi
 async function syncBillingRecords(admin: AdminClient, sale: SaleCheckoutSession, ids: WebhookIds, payload: unknown) {
   if (!sale.organization_id) return;
   const now = new Date();
-  const periodEnd = addMonths(now, 1);
+  const accessMonths = getSaleAccessMonths(sale);
+  const periodEnd = addMonths(now, accessMonths);
+  const providerSubscriptionId = getProviderSubscriptionId(sale, ids);
+  const providerPaymentId = getProviderPaymentId(sale, ids);
 
   const { data: customer } = await admin
     .from("billing_customers")
@@ -291,65 +312,60 @@ async function syncBillingRecords(admin: AdminClient, sale: SaleCheckoutSession,
     .single();
 
   let subscriptionId: string | null = null;
-  if (ids.subscriptionId || sale.provider_subscription_id) {
-    const providerSubscriptionId = ids.subscriptionId || sale.provider_subscription_id;
-    const { data: existingSubscription } = await admin
-      .from("subscriptions")
-      .select("id")
-      .eq("provider", "abacatepay")
-      .eq("provider_subscription_id", providerSubscriptionId)
-      .maybeSingle();
+  const { data: existingSubscription } = await admin
+    .from("subscriptions")
+    .select("id")
+    .eq("provider", "abacatepay")
+    .eq("provider_subscription_id", providerSubscriptionId)
+    .maybeSingle();
 
-    const subscriptionPayload = {
-      organization_id: sale.organization_id,
-      customer_id: customer?.id || null,
-      plan_code: sale.plan_code || "octa-perito-mensal",
-      status: "active",
-      amount_cents: sale.amount_cents || ids.amountCents || 0,
-      currency: sale.currency || "BRL",
-      provider: "abacatepay",
-      provider_subscription_id: providerSubscriptionId,
-      current_period_started_at: now.toISOString(),
-      current_period_ends_at: periodEnd,
-      metadata: { sale_id: sale.id, payload },
-      updated_at: now.toISOString(),
-    };
+  const subscriptionPayload = {
+    organization_id: sale.organization_id,
+    customer_id: customer?.id || null,
+    plan_code: sale.plan_code || "octa-perito-mensal",
+    status: "active",
+    amount_cents: sale.amount_cents || ids.amountCents || 0,
+    currency: sale.currency || "BRL",
+    provider: "abacatepay",
+    provider_subscription_id: providerSubscriptionId,
+    current_period_started_at: now.toISOString(),
+    current_period_ends_at: periodEnd,
+    metadata: { sale_id: sale.id, access_months: accessMonths, payload },
+    updated_at: now.toISOString(),
+  };
 
-    if (existingSubscription?.id) {
-      subscriptionId = String(existingSubscription.id);
-      await admin.from("subscriptions").update(subscriptionPayload).eq("id", subscriptionId);
-    } else {
-      const { data: createdSubscription } = await admin.from("subscriptions").insert(subscriptionPayload).select("id").single();
-      subscriptionId = createdSubscription?.id ? String(createdSubscription.id) : null;
-    }
+  if (existingSubscription?.id) {
+    subscriptionId = String(existingSubscription.id);
+    await admin.from("subscriptions").update(subscriptionPayload).eq("id", subscriptionId);
+  } else {
+    const { data: createdSubscription } = await admin.from("subscriptions").insert(subscriptionPayload).select("id").single();
+    subscriptionId = createdSubscription?.id ? String(createdSubscription.id) : null;
   }
 
-  if (ids.paymentId) {
-    const { data: existingPayment } = await admin
-      .from("payments")
-      .select("id")
-      .eq("provider", "abacatepay")
-      .eq("provider_payment_id", ids.paymentId)
-      .maybeSingle();
+  const { data: existingPayment } = await admin
+    .from("payments")
+    .select("id")
+    .eq("provider", "abacatepay")
+    .eq("provider_payment_id", providerPaymentId)
+    .maybeSingle();
 
-    const paymentPayload = {
-      organization_id: sale.organization_id,
-      subscription_id: subscriptionId,
-      status: "paid",
-      amount_cents: sale.amount_cents || ids.amountCents || 0,
-      currency: sale.currency || "BRL",
-      provider: "abacatepay",
-      provider_payment_id: ids.paymentId,
-      paid_at: now.toISOString(),
-      metadata: { sale_id: sale.id, payload },
-      updated_at: now.toISOString(),
-    };
+  const paymentPayload = {
+    organization_id: sale.organization_id,
+    subscription_id: subscriptionId,
+    status: "paid",
+    amount_cents: sale.amount_cents || ids.amountCents || 0,
+    currency: sale.currency || "BRL",
+    provider: "abacatepay",
+    provider_payment_id: providerPaymentId,
+    paid_at: now.toISOString(),
+    metadata: { sale_id: sale.id, access_months: accessMonths, payload },
+    updated_at: now.toISOString(),
+  };
 
-    if (existingPayment?.id) {
-      await admin.from("payments").update(paymentPayload).eq("id", existingPayment.id);
-    } else {
-      await admin.from("payments").insert(paymentPayload);
-    }
+  if (existingPayment?.id) {
+    await admin.from("payments").update(paymentPayload).eq("id", existingPayment.id);
+  } else {
+    await admin.from("payments").insert(paymentPayload);
   }
 
   await admin
@@ -371,6 +387,7 @@ export async function provisionPaidSale(admin: AdminClient, sale: SaleCheckoutSe
   let ownerUserId = sale.owner_user_id;
   let organizationId = sale.organization_id;
   let ownerAlreadyActive = false;
+  const providerSubscriptionId = getProviderSubscriptionId(sale, ids);
 
   if (!ownerUserId) {
     const user = await ensureBuyerUser(admin, sale);
@@ -406,7 +423,7 @@ export async function provisionPaidSale(admin: AdminClient, sale: SaleCheckoutSe
     .update({
       status: "provisioned",
       provider_customer_id: ids.customerId || sale.provider_customer_id,
-      provider_subscription_id: ids.subscriptionId || sale.provider_subscription_id,
+      provider_subscription_id: providerSubscriptionId,
       paid_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
