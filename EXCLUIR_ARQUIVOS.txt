@@ -1,0 +1,3 @@
+Excluir da raiz do repositório antes do deploy:
+
+.npmrc
