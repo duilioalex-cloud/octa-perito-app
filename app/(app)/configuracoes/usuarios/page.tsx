@@ -48,18 +48,26 @@ export default async function OrganizationUsersPage({ searchParams }: UsersPageP
   const organization = await requireCurrentOrganization("users:manage");
   const supabase = await createClient();
 
-  const { data: members = [] } = await supabase
+  const { data: membersData, error: membersError } = await supabase
     .from("organization_members")
     .select("user_id, invited_email, invited_name, role, invitation_status, invited_at, joined_at, last_seen_at, created_at")
     .eq("organization_id", organization.id)
     .order("created_at", { ascending: true });
 
-  const userIds = (members as MemberRow[]).map((member) => member.user_id).filter(Boolean) as string[];
-  const { data: profiles = [] } = userIds.length
-    ? await supabase.from("profiles").select("id, full_name, email").in("id", userIds)
-    : { data: [] as ProfileRow[] };
+  const members = (membersData ?? []) as MemberRow[];
+  const userIds = members.map((member) => member.user_id).filter(Boolean) as string[];
 
-  const profileById = new Map((profiles as ProfileRow[]).map((profile) => [profile.id, profile]));
+  let profiles: ProfileRow[] = [];
+  let profilesError: { message?: string } | null = null;
+
+  if (userIds.length) {
+    const profilesResult = await supabase.from("profiles").select("id, full_name, email").in("id", userIds);
+    profiles = (profilesResult.data ?? []) as ProfileRow[];
+    profilesError = profilesResult.error;
+  }
+
+  const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+  const loadError = membersError?.message || profilesError?.message;
 
   return (
     <section className="page-section">
@@ -74,6 +82,12 @@ export default async function OrganizationUsersPage({ searchParams }: UsersPageP
 
       {query.error && <div className="notice notice-error">{query.error}</div>}
       {query.success && <div className="notice notice-success">{query.success}</div>}
+      {loadError && (
+        <div className="notice notice-error">
+          Nao foi possivel carregar a equipe. Confirme se a migracao 010_role_based_access_control.sql
+          foi executada no Supabase. Detalhe: {loadError}
+        </div>
+      )}
 
       <div className="form-card">
         <h2>Convidar usuario</h2>
@@ -120,7 +134,7 @@ export default async function OrganizationUsersPage({ searchParams }: UsersPageP
               </tr>
             </thead>
             <tbody>
-              {(members as MemberRow[]).map((member) => {
+              {members.map((member) => {
                 const profile = member.user_id ? profileById.get(member.user_id) : null;
                 const displayName = profile?.full_name || member.invited_name || "Usuario";
                 const displayEmail = profile?.email || member.invited_email || "-";
