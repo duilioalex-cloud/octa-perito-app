@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentOrganization } from "@/lib/current-organization";
+import { getCurrentOrganization, requireCurrentOrganization } from "@/lib/current-organization";
+import { brasiliaDateTimeLocalToIso, dateOnlyAtBrasiliaTimeToIso } from "@/lib/datetime";
 
 function text(formData: FormData, name: string) {
   return String(formData.get(name) || "").trim();
@@ -14,10 +15,7 @@ function nullableText(formData: FormData, name: string) {
 }
 
 function nullableDateTime(formData: FormData, name: string) {
-  const value = text(formData, name);
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  return brasiliaDateTimeLocalToIso(formData.get(name));
 }
 
 function money(formData: FormData, name: string) {
@@ -111,8 +109,7 @@ export async function deleteProcessAction(processId: string) {
 }
 
 export async function createProcessAction(formData: FormData) {
-  const organization = await getCurrentOrganization();
-  if (!organization) redirect("/onboarding");
+  const organization = await requireCurrentOrganization("processes:write");
   const processNumber = text(formData, "process_number");
   if (processNumber.length < 5) redirect("/processos/novo?error=Informe o número do processo.");
 
@@ -154,24 +151,26 @@ export async function createProcessAction(formData: FormData) {
   }
 
   const deadlineRows: Array<Record<string, unknown>> = [];
-  if (payload.appointment_response_due_at) {
+  const appointmentResponseDueAt = dateOnlyAtBrasiliaTimeToIso(payload.appointment_response_due_at);
+  if (appointmentResponseDueAt) {
     deadlineRows.push({
       organization_id: organization.id,
       process_id: data.id,
       title: "Manifestação sobre a nomeação",
       category: "manifestation",
-      due_at: new Date(`${payload.appointment_response_due_at}T18:00:00`).toISOString(),
+      due_at: appointmentResponseDueAt,
       priority: payload.priority,
       created_by: user.id,
     });
   }
-  if (payload.report_due_at) {
+  const reportDueAt = dateOnlyAtBrasiliaTimeToIso(payload.report_due_at);
+  if (reportDueAt) {
     deadlineRows.push({
       organization_id: organization.id,
       process_id: data.id,
       title: "Entrega do laudo pericial",
       category: "report",
-      due_at: new Date(`${payload.report_due_at}T18:00:00`).toISOString(),
+      due_at: reportDueAt,
       priority: payload.priority,
       created_by: user.id,
     });
@@ -203,8 +202,7 @@ export async function createProcessAction(formData: FormData) {
 }
 
 export async function updateProcessAction(processId: string, formData: FormData) {
-  const organization = await getCurrentOrganization();
-  if (!organization) redirect("/onboarding");
+  const organization = await requireCurrentOrganization("processes:write");
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -261,8 +259,7 @@ export async function updateProcessAction(processId: string, formData: FormData)
 }
 
 export async function updateProcessStatusAction(processId: string, formData: FormData) {
-  const organization = await getCurrentOrganization();
-  if (!organization) redirect("/onboarding");
+  const organization = await requireCurrentOrganization("processes:write");
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");

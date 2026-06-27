@@ -4,6 +4,7 @@ import { getCurrentOrganization } from "@/lib/current-organization";
 import { hasPermission } from "@/lib/permissions";
 import { eventTypeIcon, eventTypeLabel } from "@/lib/calendar-options";
 import { formatDate, formatDateTime, PROCESS_STATUS_OPTIONS, priorityLabel, processStatusLabel } from "@/lib/process-options";
+import { dateOnlyAtBrasiliaTimeToIso } from "@/lib/datetime";
 
 export const metadata = { title: "Painel operacional" };
 
@@ -52,7 +53,8 @@ function relatedProcess(value: EventRow["processes"]) {
 
 function daysFromNow(value: string | null | undefined, reference: Date) {
   if (!value) return null;
-  const date = new Date(value);
+  const normalized = value.length <= 10 ? dateOnlyAtBrasiliaTimeToIso(value, "12:00:00") : value;
+  const date = new Date(normalized || value);
   if (Number.isNaN(date.getTime())) return null;
   return Math.ceil((date.getTime() - reference.getTime()) / 86400000);
 }

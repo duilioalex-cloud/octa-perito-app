@@ -1,3 +1,5 @@
+import { formatLongDateInBrasilia } from "@/lib/datetime";
+
 export type BrandAsset = {
   data: Uint8Array;
   mimeType: string;
@@ -95,10 +97,7 @@ export function buildDocumentIdentity(input: {
 }
 
 export function formatLongDate(value?: string | null) {
-  if (!value) return "";
-  const date = new Date(`${value}T12:00:00`);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "long" }).format(date);
+  return formatLongDateInBrasilia(value, value || "");
 }
 
 export function valueOrPlaceholder(value: string | null | undefined) {

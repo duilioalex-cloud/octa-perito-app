@@ -3,18 +3,15 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentOrganization } from "@/lib/current-organization";
+import { requireCurrentOrganization } from "@/lib/current-organization";
+import { brasiliaDateTimeLocalToIso } from "@/lib/datetime";
 
 function toIsoDateTime(value: FormDataEntryValue | null) {
-  const text = String(value || "").trim();
-  if (!text) return null;
-  const date = new Date(text);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  return brasiliaDateTimeLocalToIso(value);
 }
 
 export async function createDeadlineAction(processId: string, formData: FormData) {
-  const organization = await getCurrentOrganization();
-  if (!organization) redirect("/onboarding");
+  const organization = await requireCurrentOrganization("calendar:write");
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -52,8 +49,7 @@ export async function createDeadlineAction(processId: string, formData: FormData
 }
 
 export async function completeDeadlineAction(processId: string, deadlineId: string) {
-  const organization = await getCurrentOrganization();
-  if (!organization) redirect("/onboarding");
+  const organization = await requireCurrentOrganization("calendar:write");
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");

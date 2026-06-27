@@ -4,6 +4,7 @@ import { getCurrentOrganization } from "@/lib/current-organization";
 import { hasPermission } from "@/lib/permissions";
 import { alertLevelClass, alertLevelFor, alertLevelLabel, eventStatusClass, eventStatusLabel, eventTypeIcon, eventTypeLabel, EVENT_STATUS_OPTIONS, EVENT_TYPE_OPTIONS } from "@/lib/calendar-options";
 import { formatDateTime, priorityLabel } from "@/lib/process-options";
+import { dateKeyInBrasilia, dateOnlyAtBrasiliaTimeToIso, formatTimeInBrasilia, todayInBrasilia } from "@/lib/datetime";
 
 export const metadata = { title: "Agenda pericial" };
 
@@ -47,6 +48,10 @@ function dateKey(value: string | Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function eventDateKey(value: string) {
+  return dateKeyInBrasilia(value);
+}
+
 function relatedProcess(event: CalendarEvent) {
   return Array.isArray(event.processes) ? event.processes[0] : event.processes;
 }
@@ -71,6 +76,8 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   const supabase = await createClient();
   const monthStart = startOfMonth(query.month);
   const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1);
+  const monthStartIso = dateOnlyAtBrasiliaTimeToIso(`${monthKey(monthStart)}-01`, "00:00:00") || monthStart.toISOString();
+  const monthEndIso = dateOnlyAtBrasiliaTimeToIso(`${monthKey(monthEnd)}-01`, "00:00:00") || monthEnd.toISOString();
   const previousMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() - 1, 1);
   const nextMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1);
   const now = new Date();
@@ -81,8 +88,8 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       .from("calendar_events")
       .select("id,process_id,title,event_type,status,priority,starts_at,ends_at,all_day,location_name,address,city,state,responsible_name,processes(id,process_number,subject)")
       .eq("organization_id", organization.id)
-      .gte("starts_at", monthStart.toISOString())
-      .lt("starts_at", monthEnd.toISOString())
+      .gte("starts_at", monthStartIso)
+      .lt("starts_at", monthEndIso)
       .order("starts_at", { ascending: true }),
     supabase
       .from("calendar_events")
@@ -103,7 +110,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
 
   const eventsByDate = new Map<string, CalendarEvent[]>();
   for (const event of filtered) {
-    const key = dateKey(event.starts_at);
+    const key = eventDateKey(event.starts_at);
     eventsByDate.set(key, [...(eventsByDate.get(key) || []), event]);
   }
 
@@ -113,7 +120,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   const nextSeven = alertRows.filter((item) => ["today", "next_3_days", "next_7_days"].includes(alertLevelFor(item.starts_at, item.status, now))).length;
   const unconfirmed = alertRows.filter((item) => ["diligence", "inspection", "hearing"].includes(item.event_type) && ["scheduled", "pending"].includes(item.status)).length;
   const calendarDays = buildCalendarDays(monthStart);
-  const todayKey = dateKey(now);
+  const todayKey = todayInBrasilia();
 
   return (
     <>
@@ -160,7 +167,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
               <article className={`calendar-day${outside ? " calendar-day-outside" : ""}${key === todayKey ? " calendar-day-today" : ""}`} key={key}>
                 <div className="calendar-day-number"><span>{day.getDate()}</span>{dayEvents.length > 0 && <small>{dayEvents.length}</small>}</div>
                 <div className="calendar-day-events">
-                  {dayEvents.slice(0, 3).map((event) => <Link className={`calendar-mini-event calendar-mini-${event.event_type}`} href={`/agenda/${event.id}`} key={event.id}><i>{eventTypeIcon(event.event_type)}</i><span>{event.title}</span><b>{new Date(event.starts_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</b></Link>)}
+                  {dayEvents.slice(0, 3).map((event) => <Link className={`calendar-mini-event calendar-mini-${event.event_type}`} href={`/agenda/${event.id}`} key={event.id}><i>{eventTypeIcon(event.event_type)}</i><span>{event.title}</span><b>{formatTimeInBrasilia(event.starts_at)}</b></Link>)}
                   {dayEvents.length > 3 && <span className="calendar-more">+ {dayEvents.length - 3} compromisso(s)</span>}
                 </div>
               </article>

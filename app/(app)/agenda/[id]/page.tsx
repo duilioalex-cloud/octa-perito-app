@@ -23,15 +23,12 @@ import {
   eventTypeLabel,
 } from "@/lib/calendar-options";
 import { PRIORITY_OPTIONS, formatDateTime, priorityLabel } from "@/lib/process-options";
+import { toBrasiliaDateTimeInput } from "@/lib/datetime";
 
 export const metadata = { title: "Detalhes do compromisso" };
 
 function dateTimeLocal(value?: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const offset = date.getTimezoneOffset();
-  return new Date(date.getTime() - offset * 60000).toISOString().slice(0, 16);
+  return toBrasiliaDateTimeInput(value);
 }
 
 export default async function CalendarEventDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ success?: string; error?: string }> }) {

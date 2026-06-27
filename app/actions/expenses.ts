@@ -3,7 +3,9 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentOrganization } from "@/lib/current-organization";
+import { requireCurrentOrganization } from "@/lib/current-organization";
+import { hasPermission } from "@/lib/permissions";
+import { brasiliaDateTimeLocalToIso, todayInBrasilia } from "@/lib/datetime";
 
 function text(formData: FormData, name: string) {
   return String(formData.get(name) || "").trim();
@@ -15,6 +17,10 @@ function nullableText(formData: FormData, name: string) {
 
 function nullableDate(formData: FormData, name: string) {
   return text(formData, name) || null;
+}
+
+function nullableDateTime(formData: FormData, name: string) {
+  return brasiliaDateTimeLocalToIso(formData.get(name));
 }
 
 function decimal(formData: FormData, name: string, fallback = 0) {
@@ -35,8 +41,7 @@ function checked(formData: FormData, name: string) {
 }
 
 async function requireContext() {
-  const organization = await getCurrentOrganization();
-  if (!organization) redirect("/onboarding");
+  const organization = await requireCurrentOrganization("finance:write");
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -104,8 +109,8 @@ export async function saveTripAction(processId: string, tripId: string | null, f
     origin_state: nullableText(formData, "origin_state"),
     destination_city: nullableText(formData, "destination_city"),
     destination_state: nullableText(formData, "destination_state"),
-    departure_at: nullableDate(formData, "departure_at"),
-    return_at: nullableDate(formData, "return_at"),
+    departure_at: nullableDateTime(formData, "departure_at"),
+    return_at: nullableDateTime(formData, "return_at"),
     one_way_km: oneWayKm,
     total_km: totalKm,
     trips_count: tripsCount,
@@ -186,8 +191,8 @@ export async function updateTripStatusAction(processId: string, tripId: string, 
 
 export async function deleteTripAction(processId: string, tripId: string) {
   const { organization, supabase, user } = await ensureProcess(processId);
-  if (!["owner", "admin"].includes(organization.role)) {
-    redirectError(processId, "Somente proprietários e administradores podem excluir deslocamentos.");
+  if (!hasPermission(organization.role, "finance:delete")) {
+    redirectError(processId, "Seu nivel de acesso nao permite excluir deslocamentos.");
   }
 
   const { data, error } = await supabase
@@ -244,7 +249,7 @@ export async function saveExpenseAction(processId: string, expenseId: string | n
     trip_id: tripId,
     category: text(formData, "category") || "other",
     description,
-    expense_date: nullableDate(formData, "expense_date") || new Date().toISOString().slice(0, 10),
+    expense_date: nullableDate(formData, "expense_date") || todayInBrasilia(),
     quantity,
     unit_amount: unitAmount,
     payment_method: nullableText(formData, "payment_method"),
@@ -295,7 +300,7 @@ export async function updateExpensePaymentStatusAction(processId: string, expens
 
   const { data, error } = await supabase
     .from("process_expenses")
-    .update({ payment_status: status, paid_at: status === "paid" ? new Date().toISOString().slice(0, 10) : null })
+    .update({ payment_status: status, paid_at: status === "paid" ? todayInBrasilia() : null })
     .eq("id", expenseId)
     .eq("process_id", processId)
     .eq("organization_id", organization.id)
@@ -349,8 +354,8 @@ export async function updateExpenseReimbursementStatusAction(processId: string, 
 
 export async function deleteExpenseAction(processId: string, expenseId: string) {
   const { organization, supabase, user } = await ensureProcess(processId);
-  if (!["owner", "admin"].includes(organization.role)) {
-    redirectError(processId, "Somente proprietários e administradores podem excluir despesas.");
+  if (!hasPermission(organization.role, "finance:delete")) {
+    redirectError(processId, "Seu nivel de acesso nao permite excluir despesas.");
   }
 
   const { data, error } = await supabase

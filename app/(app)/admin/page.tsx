@@ -9,6 +9,7 @@ import {
   updateOrganizationBillingStatusAction,
 } from "@/app/actions/admin";
 import { billingStatusLabels, normalizeBillingStatus, type BillingStatus } from "@/lib/billing";
+import { formatDateTimeInBrasilia } from "@/lib/datetime";
 import { requirePlatformAdmin } from "@/lib/platform-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -104,8 +105,7 @@ function formatCurrencyFromCents(value?: number | null) {
 }
 
 function formatDate(value?: string | null) {
-  if (!value) return "-";
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+  return formatDateTimeInBrasilia(value, "-");
 }
 
 function statusClass(status: BillingStatus) {

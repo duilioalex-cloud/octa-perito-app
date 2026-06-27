@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentOrganization } from "@/lib/current-organization";
+import { requireCurrentOrganization } from "@/lib/current-organization";
 import { safeFileName } from "@/lib/report-options";
+import { brasiliaDateTimeLocalToIso } from "@/lib/datetime";
 
 function text(formData: FormData, name: string) {
   return String(formData.get(name) ?? "").trim();
@@ -20,8 +21,7 @@ function integer(formData: FormData, name: string, fallback = 0) {
 }
 
 async function context() {
-  const organization = await getCurrentOrganization();
-  if (!organization) redirect("/onboarding");
+  const organization = await requireCurrentOrganization("reports:write");
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -348,7 +348,7 @@ export async function uploadReportAttachmentAction(reportId: string, formData: F
     size_bytes: file.size,
     caption: nullableText(formData, "caption"),
     description: nullableText(formData, "description"),
-    captured_at: text(formData, "captured_at") || null,
+    captured_at: brasiliaDateTimeLocalToIso(formData.get("captured_at")),
     location_text: nullableText(formData, "location_text"),
     sort_order: integer(formData, "sort_order", 0),
     created_by: user.id,

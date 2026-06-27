@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requireCurrentOrganization } from "@/lib/current-organization";
 import { memberRoles, roleLabels, canManageRole, type MemberRole } from "@/lib/permissions";
+import { formatDateTimeInBrasilia } from "@/lib/datetime";
 import {
   inviteOrganizationMemberAction,
   removeOrganizationMemberAction,
@@ -32,8 +33,7 @@ type ProfileRow = {
 };
 
 function formatDate(value?: string | null) {
-  if (!value) return "-";
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+  return formatDateTimeInBrasilia(value, "-");
 }
 
 function statusLabel(member: MemberRow) {

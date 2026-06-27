@@ -1,3 +1,5 @@
+import { formatDateInBrasilia, formatDateTimeInBrasilia, toBrasiliaDateTimeInput } from "@/lib/datetime";
+
 export const PROCESS_STATUS_OPTIONS = [
   ["appointment_received", "Nomeação recebida"],
   ["analysis", "Em análise"],
@@ -55,23 +57,13 @@ export function formatCurrency(value?: number | string | null) {
 }
 
 export function formatDate(value?: string | null) {
-  if (!value) return "Não definido";
-  const date = new Date(`${value.slice(0, 10)}T12:00:00`);
-  return Number.isNaN(date.getTime()) ? "Não definido" : date.toLocaleDateString("pt-BR");
+  return formatDateInBrasilia(value);
 }
 
 export function formatDateTime(value?: string | null) {
-  if (!value) return "Não definido";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? "Não definido"
-    : date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+  return formatDateTimeInBrasilia(value);
 }
 
 export function toDateTimeLocal(value?: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const offset = date.getTimezoneOffset();
-  return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 16);
+  return toBrasiliaDateTimeInput(value);
 }

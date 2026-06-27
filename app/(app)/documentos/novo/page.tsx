@@ -5,9 +5,9 @@ import { createGeneratedDocumentAction } from "@/app/actions/documents";
 import { DocumentGenerator } from "@/components/document-generator";
 import { formatCurrency, formatDate } from "@/lib/process-options";
 import { templateBody } from "@/lib/document-options";
+import { formatTimeInBrasilia, todayLongInBrasilia } from "@/lib/datetime";
 
 export const metadata = { title: "Gerar documento" };
-const today = () => new Intl.DateTimeFormat("pt-BR", { dateStyle: "long" }).format(new Date());
 
 export default async function NewDocumentPage({ searchParams }: { searchParams: Promise<{ template?: string; process?: string; error?: string }> }) {
   const query = await searchParams; const organization = await requireCurrentOrganization("documents:write"); const supabase = await createClient();
@@ -35,13 +35,13 @@ export default async function NewDocumentPage({ searchParams }: { searchParams: 
     registro_profissional: [profile?.council, profile?.council_number].filter(Boolean).join(" nº "),
     objeto_pericia: process.subject || "",
     data_diligencia: formatDate(process.diligence_at),
-    horario_diligencia: process.diligence_at ? new Date(process.diligence_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "",
+    horario_diligencia: formatTimeInBrasilia(process.diligence_at),
     valor_arbitrado: formatCurrency(process.fee_arbitrated),
     valor_requerido: formatCurrency(process.fee_proposed),
     prazo_original: formatDate(process.report_due_at),
     data_final_atual: formatDate(process.report_due_at),
     cidade_assinatura: process.district || "",
-    data_assinatura: today(),
+    data_assinatura: todayLongInBrasilia(),
   };
   for (const variable of template.variables || []) if (!(variable in initialValues)) initialValues[variable] = "";
   const action = createGeneratedDocumentAction.bind(null, template.id, process.id);

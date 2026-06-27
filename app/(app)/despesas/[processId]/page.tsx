@@ -27,6 +27,7 @@ import {
 } from "@/lib/expense-options";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/process-options";
 import { moneyInputValue } from "@/lib/finance-options";
+import { toBrasiliaDateTimeInput, todayInBrasilia } from "@/lib/datetime";
 
 export const metadata = { title: "Custos do processo" };
 
@@ -36,11 +37,7 @@ function num(value: number | string | null | undefined) {
 }
 
 function dateTimeLocal(value?: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const offset = date.getTimezoneOffset();
-  return new Date(date.getTime() - offset * 60000).toISOString().slice(0, 16);
+  return toBrasiliaDateTimeInput(value);
 }
 
 type Trip = {
@@ -315,7 +312,7 @@ function ExpenseForm({ action, expense, trips, submitLabel }: { action: (formDat
       <label className="field"><span>Categoria</span><select className="select" name="category" defaultValue={expense?.category || "other"}>{EXPENSE_CATEGORY_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
       <label className="field"><span>Deslocamento relacionado</span><select className="select" name="trip_id" defaultValue={expense?.trip_id || ""}><option value="">Nenhum</option>{trips.map((trip) => <option value={trip.id} key={trip.id}>{trip.title} — {trip.destination_city || "sem destino"}</option>)}</select></label>
       <label className="field full"><span>Descrição</span><input className="input" name="description" defaultValue={expense?.description || ""} placeholder="Ex.: diária de hospedagem para diligência" required /></label>
-      <label className="field"><span>Data</span><input className="input" name="expense_date" type="date" defaultValue={expense?.expense_date || new Date().toISOString().slice(0, 10)} required /></label>
+      <label className="field"><span>Data</span><input className="input" name="expense_date" type="date" defaultValue={expense?.expense_date || todayInBrasilia()} required /></label>
       <label className="field"><span>Situação do pagamento</span><select className="select" name="payment_status" defaultValue={expense?.payment_status || "pending"}>{EXPENSE_PAYMENT_STATUS_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
       <label className="field"><span>Quantidade</span><input className="input" name="quantity" inputMode="decimal" defaultValue={moneyInputValue(expense?.quantity) || "1,00"} required /></label>
       <label className="field"><span>Valor unitário</span><input className="input" name="unit_amount" inputMode="decimal" defaultValue={moneyInputValue(expense?.unit_amount)} placeholder="0,00" required /></label>

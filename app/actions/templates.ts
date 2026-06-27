@@ -3,14 +3,14 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentOrganization } from "@/lib/current-organization";
+import { requireCurrentOrganization } from "@/lib/current-organization";
 import { extractVariables } from "@/lib/document-options";
+import { todayInBrasilia } from "@/lib/datetime";
 
 function text(formData: FormData, key: string) { return String(formData.get(key) ?? "").trim(); }
 
 export async function createTemplateAction(formData: FormData) {
-  const organization = await getCurrentOrganization();
-  if (!organization) redirect("/onboarding");
+  const organization = await requireCurrentOrganization("templates:write");
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -40,8 +40,7 @@ export async function createTemplateAction(formData: FormData) {
 }
 
 export async function duplicateTemplateAction(templateId: string) {
-  const organization = await getCurrentOrganization();
-  if (!organization) redirect("/onboarding");
+  const organization = await requireCurrentOrganization("templates:write");
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -70,8 +69,7 @@ export async function duplicateTemplateAction(templateId: string) {
 }
 
 export async function updateTemplateAction(templateId: string, formData: FormData) {
-  const organization = await getCurrentOrganization();
-  if (!organization) redirect("/onboarding");
+  const organization = await requireCurrentOrganization("templates:write");
   const supabase = await createClient();
   const { data: existing } = await supabase.from("templates").select("version,is_octa_model,organization_id").eq("id", templateId).maybeSingle();
   if (!existing || existing.is_octa_model || existing.organization_id !== organization.id) redirect(`/biblioteca/${templateId}?error=Este modelo não pode ser editado.`);
@@ -86,7 +84,7 @@ export async function updateTemplateAction(templateId: string, formData: FormDat
     variables: extractVariables(body),
     legal_basis: text(formData, "legal_basis").split("\n").map((item) => item.trim()).filter(Boolean),
     version: Number(existing.version || 1) + 1,
-    revision_date: new Date().toISOString().slice(0, 10),
+    revision_date: todayInBrasilia(),
   }).eq("id", templateId).eq("organization_id", organization.id);
   if (error) redirect(`/biblioteca/${templateId}/editar?error=${encodeURIComponent(error.message)}`);
   revalidatePath("/biblioteca"); revalidatePath(`/biblioteca/${templateId}`);

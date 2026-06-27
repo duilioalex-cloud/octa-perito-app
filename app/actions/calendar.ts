@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentOrganization } from "@/lib/current-organization";
+import { getCurrentOrganization, requireCurrentOrganization } from "@/lib/current-organization";
+import type { Permission } from "@/lib/permissions";
 import { reverseDeadlineCategory } from "@/lib/calendar-options";
+import { brasiliaDateTimeLocalToIso } from "@/lib/datetime";
 
 function text(formData: FormData, name: string) {
   return String(formData.get(name) || "").trim();
@@ -19,10 +21,7 @@ function checked(formData: FormData, name: string) {
 }
 
 function toIsoDateTime(value: FormDataEntryValue | null) {
-  const raw = String(value || "").trim();
-  if (!raw) return null;
-  const date = new Date(raw);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  return brasiliaDateTimeLocalToIso(value);
 }
 
 function parseIntegerList(value: FormDataEntryValue | null, fallback: number[]) {
@@ -37,8 +36,8 @@ function agendaRedirect(message: string, type: "success" | "error" = "success", 
   redirect(`/agenda${suffix}?${type}=${encodeURIComponent(message)}`);
 }
 
-async function context() {
-  const organization = await getCurrentOrganization();
+async function context(permission?: Permission) {
+  const organization = permission ? await requireCurrentOrganization(permission) : await getCurrentOrganization();
   if (!organization) redirect("/onboarding");
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -81,7 +80,7 @@ function refresh(eventId?: string, processId?: string | null) {
 }
 
 export async function saveCalendarEventAction(eventId: string | null, formData: FormData) {
-  const { organization, supabase, user } = await context();
+  const { organization, supabase, user } = await context("calendar:write");
   const title = text(formData, "title");
   const startsAt = toIsoDateTime(formData.get("starts_at"));
   const endsAt = toIsoDateTime(formData.get("ends_at"));
@@ -165,7 +164,7 @@ export async function saveCalendarEventAction(eventId: string | null, formData: 
 }
 
 export async function updateCalendarEventStatusAction(eventId: string, status: string) {
-  const { organization, supabase, user } = await context();
+  const { organization, supabase, user } = await context("calendar:write");
   if (!["scheduled", "confirmed", "completed", "rescheduled", "cancelled", "pending"].includes(status)) {
     agendaRedirect("Situação inválida.", "error", `/${eventId}`);
   }
@@ -195,7 +194,7 @@ export async function updateCalendarEventStatusAction(eventId: string, status: s
 }
 
 export async function deleteCalendarEventAction(eventId: string) {
-  const { organization, supabase, user } = await context();
+  const { organization, supabase, user } = await context("calendar:delete");
   if (!["owner", "admin"].includes(organization.role)) agendaRedirect("Somente proprietários e administradores podem excluir compromissos.", "error", `/${eventId}`);
 
   const { data: existing } = await supabase.from("calendar_events").select("id,title,process_id,deadline_id").eq("id", eventId).eq("organization_id", organization.id).maybeSingle();
@@ -215,7 +214,7 @@ export async function deleteCalendarEventAction(eventId: string) {
 }
 
 export async function addEventParticipantAction(eventId: string, formData: FormData) {
-  const { organization, supabase, user } = await context();
+  const { organization, supabase, user } = await context("calendar:write");
   const name = text(formData, "name");
   if (name.length < 2) agendaRedirect("Informe o nome do participante.", "error", `/${eventId}`);
 
@@ -244,7 +243,7 @@ export async function updateParticipantAttendanceFromFormAction(eventId: string,
 }
 
 export async function updateParticipantAttendanceAction(eventId: string, participantId: string, status: string) {
-  const { organization, supabase } = await context();
+  const { organization, supabase } = await context("calendar:write");
   if (!["invited", "confirmed", "declined", "attended", "absent"].includes(status)) agendaRedirect("Situação de presença inválida.", "error", `/${eventId}`);
 
   const { data: event } = await supabase.from("calendar_events").select("id,process_id").eq("id", eventId).eq("organization_id", organization.id).maybeSingle();
@@ -258,7 +257,7 @@ export async function updateParticipantAttendanceAction(eventId: string, partici
 }
 
 export async function deleteEventParticipantAction(eventId: string, participantId: string) {
-  const { organization, supabase } = await context();
+  const { organization, supabase } = await context("calendar:delete");
   const { data: event } = await supabase.from("calendar_events").select("id,process_id").eq("id", eventId).eq("organization_id", organization.id).maybeSingle();
   if (!event) agendaRedirect("Compromisso não encontrado.", "error");
 

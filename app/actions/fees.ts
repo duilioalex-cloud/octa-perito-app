@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireCurrentOrganization } from "@/lib/current-organization";
 import { hasPermission } from "@/lib/permissions";
+import { todayInBrasilia } from "@/lib/datetime";
 
 function text(formData: FormData, name: string) {
   return String(formData.get(name) || "").trim();
@@ -345,7 +346,7 @@ export async function saveFeeCalculatorAction(processId: string, feeId: string |
     responsible_party: responsibleParty,
     proposed_amount: totalSuggested,
     advance_percentage: advancePercentage,
-    proposed_at: new Date().toISOString().slice(0, 10),
+    proposed_at: todayInBrasilia(),
     notes: memoryText,
     metadata: calculatorMetadata,
     is_primary: true,
@@ -385,7 +386,7 @@ export async function saveFeeCalculatorAction(processId: string, feeId: string |
     process_id: processId,
     category: "other",
     description: "Despesas estimadas da proposta de honorários",
-    expense_date: new Date().toISOString().slice(0, 10),
+    expense_date: todayInBrasilia(),
     quantity: 1,
     unit_amount: directExpensesTotal,
     payment_status: directExpensesTotal > 0 ? "planned" : "cancelled",

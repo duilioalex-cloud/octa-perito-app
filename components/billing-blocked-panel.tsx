@@ -1,8 +1,8 @@
 import type { OrganizationBillingState } from "@/lib/billing";
+import { formatDateTimeInBrasilia } from "@/lib/datetime";
 
 function formatDate(value?: string | null) {
-  if (!value) return "Nao informado";
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+  return formatDateTimeInBrasilia(value, "Nao informado");
 }
 
 export function BillingBlockedPanel({
