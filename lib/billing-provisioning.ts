@@ -23,6 +23,12 @@ export type SaleCheckoutSession = {
   metadata: Record<string, unknown> | null;
 };
 
+type BuyerUserResult = {
+  id: string;
+  alreadyActive: boolean;
+  invitationError: string | null;
+};
+
 type WebhookIds = {
   eventId: string | null;
   eventType: string;
@@ -168,13 +174,13 @@ export async function findOrganizationIdFromWebhook(admin: AdminClient, ids: Web
   return null;
 }
 
-async function ensureBuyerUser(admin: AdminClient, sale: SaleCheckoutSession) {
+async function ensureBuyerUser(admin: AdminClient, sale: SaleCheckoutSession): Promise<BuyerUserResult> {
   const email = normalizeEmail(sale.buyer_email);
   const { data: profile } = await admin.from("profiles").select("id").ilike("email", email).maybeSingle();
-  if (profile?.id) return { id: String(profile.id), alreadyActive: true };
+  if (profile?.id) return { id: String(profile.id), alreadyActive: true, invitationError: null };
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
-  const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
+  const inviteResult = await admin.auth.admin.inviteUserByEmail(email, {
     data: {
       full_name: sale.buyer_name,
       organization_name: sale.organization_name,
@@ -182,9 +188,30 @@ async function ensureBuyerUser(admin: AdminClient, sale: SaleCheckoutSession) {
     },
     redirectTo: `${siteUrl}/auth/callback?next=/dashboard`,
   });
+  if (inviteResult.data.user?.id) return { id: inviteResult.data.user.id, alreadyActive: false, invitationError: inviteResult.error?.message || null };
 
-  if (error || !data.user?.id) throw new Error(error?.message || "Nao foi possivel convidar o comprador.");
-  return { id: data.user.id, alreadyActive: false };
+  const temporaryPassword = crypto.randomUUID();
+  const createResult = await admin.auth.admin.createUser({
+    email,
+    password: temporaryPassword,
+    email_confirm: true,
+    user_metadata: {
+      full_name: sale.buyer_name,
+      organization_name: sale.organization_name,
+      source: "abacatepay_purchase",
+      requires_password_reset: true,
+    },
+  });
+
+  if (createResult.data.user?.id) {
+    return {
+      id: createResult.data.user.id,
+      alreadyActive: false,
+      invitationError: inviteResult.error?.message || "Convite nao enviado. Usuario criado para recuperacao de senha.",
+    };
+  }
+
+  throw new Error(createResult.error?.message || inviteResult.error?.message || "Nao foi possivel criar o comprador.");
 }
 
 async function createOrganizationForSale(admin: AdminClient, sale: SaleCheckoutSession, ownerId: string) {
@@ -349,7 +376,18 @@ export async function provisionPaidSale(admin: AdminClient, sale: SaleCheckoutSe
     const user = await ensureBuyerUser(admin, sale);
     ownerUserId = user.id;
     ownerAlreadyActive = user.alreadyActive;
-    await admin.from("sales_checkout_sessions").update({ owner_user_id: ownerUserId, updated_at: new Date().toISOString() }).eq("id", sale.id);
+    await admin
+      .from("sales_checkout_sessions")
+      .update({
+        owner_user_id: ownerUserId,
+        metadata: {
+          ...(sale.metadata || {}),
+          invitation_error: user.invitationError,
+          access_note: user.invitationError ? "Usuario criado sem envio de e-mail. Use recuperacao de senha ou reenvie convite." : null,
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", sale.id);
     sale.owner_user_id = ownerUserId;
   }
 

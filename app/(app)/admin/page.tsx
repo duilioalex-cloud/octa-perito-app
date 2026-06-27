@@ -66,6 +66,7 @@ type SaleRow = {
   paid_at: string | null;
   failed_at: string | null;
   created_at: string;
+  metadata: Record<string, unknown> | null;
 };
 
 type EventRow = {
@@ -130,7 +131,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
     admin.from("organization_members").select("organization_id,user_id,invited_email"),
     admin
       .from("sales_checkout_sessions")
-      .select("id,status,buyer_name,buyer_email,organization_name,plan_code,amount_cents,checkout_url,organization_id,paid_at,failed_at,created_at")
+      .select("id,status,buyer_name,buyer_email,organization_name,plan_code,amount_cents,checkout_url,organization_id,paid_at,failed_at,created_at,metadata")
       .order("created_at", { ascending: false })
       .limit(20),
     admin
@@ -329,11 +330,13 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
             <tbody>
               {sales.map((sale) => {
                 const linkedOrganization = sale.organization_id ? organizationById.get(sale.organization_id) : null;
+                const invitationError = typeof sale.metadata?.invitation_error === "string" ? sale.metadata.invitation_error : null;
                 return (
                   <tr key={sale.id}>
                     <td>
                       <strong className="admin-client-name">{sale.buyer_name}</strong>
                       <span className="admin-client-meta">{sale.buyer_email}</span>
+                      {invitationError && <span className="admin-client-warning">E-mail: {invitationError}</span>}
                     </td>
                     <td>
                       <strong className="admin-client-owner">{linkedOrganization?.name || sale.organization_name}</strong>
