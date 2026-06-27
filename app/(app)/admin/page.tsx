@@ -4,6 +4,8 @@ import {
   deleteCheckoutSessionAction,
   deleteTestOrganizationAction,
   processPaidCheckoutSessionAction,
+  sendCustomerPasswordResetAction,
+  setCustomerTemporaryPasswordAction,
   updateOrganizationBillingStatusAction,
 } from "@/app/actions/admin";
 import { billingStatusLabels, normalizeBillingStatus, type BillingStatus } from "@/lib/billing";
@@ -72,6 +74,7 @@ type SaleRow = {
   amount_cents: number | null;
   checkout_url: string | null;
   organization_id: string | null;
+  owner_user_id: string | null;
   paid_at: string | null;
   failed_at: string | null;
   created_at: string;
@@ -162,7 +165,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
     admin.from("organization_members").select("organization_id,user_id,invited_email"),
     admin
       .from("sales_checkout_sessions")
-      .select("id,status,buyer_name,buyer_email,organization_name,plan_code,amount_cents,checkout_url,organization_id,paid_at,failed_at,created_at,metadata")
+      .select("id,status,buyer_name,buyer_email,organization_name,plan_code,amount_cents,checkout_url,organization_id,owner_user_id,paid_at,failed_at,created_at,metadata")
       .order("created_at", { ascending: false })
       .limit(20),
     admin
@@ -318,6 +321,31 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
                         </label>
                         <button className="button button-primary button-small" type="submit">Salvar</button>
                       </form>
+                      <div className="admin-access-actions">
+                        {owner?.email && (
+                          <form action={sendCustomerPasswordResetAction} className="admin-inline-form">
+                            <input type="hidden" name="organization_id" value={org.id} />
+                            <input type="hidden" name="email" value={owner.email} />
+                            <button className="button button-secondary button-small" type="submit">Enviar link de senha</button>
+                          </form>
+                        )}
+                        {org.owner_id && (
+                          <form action={setCustomerTemporaryPasswordAction} className="admin-password-form">
+                            <input type="hidden" name="organization_id" value={org.id} />
+                            <input type="hidden" name="user_id" value={org.owner_id} />
+                            <input type="hidden" name="email" value={owner?.email || ""} />
+                            <input
+                              className="input input-small"
+                              name="temporary_password"
+                              type="password"
+                              minLength={8}
+                              placeholder="Senha temporaria"
+                              required
+                            />
+                            <button className="button button-secondary button-small" type="submit">Alterar senha</button>
+                          </form>
+                        )}
+                      </div>
                       <form action={deleteTestOrganizationAction} className="admin-inline-form">
                         <input type="hidden" name="organization_id" value={org.id} />
                         <button className="button button-danger button-small" type="submit">Excluir cliente teste</button>
@@ -366,6 +394,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
               {sales.map((sale) => {
                 const linkedOrganization = sale.organization_id ? organizationById.get(sale.organization_id) : null;
                 const invitationError = typeof sale.metadata?.invitation_error === "string" ? sale.metadata.invitation_error : null;
+                const canSendSaleAccess = sale.status === "provisioned" || Boolean(sale.organization_id || sale.owner_user_id);
                 return (
                   <tr key={sale.id}>
                     <td>
@@ -418,6 +447,31 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
                           <form action={deleteCheckoutSessionAction}>
                             <input type="hidden" name="sale_id" value={sale.id} />
                             <button className="button button-danger button-small" type="submit">Excluir compra</button>
+                          </form>
+                        )}
+                        {canSendSaleAccess && (
+                          <form action={sendCustomerPasswordResetAction}>
+                            <input type="hidden" name="sale_id" value={sale.id} />
+                            <input type="hidden" name="organization_id" value={sale.organization_id || ""} />
+                            <input type="hidden" name="email" value={sale.buyer_email} />
+                            <button className="button button-secondary button-small" type="submit">Enviar senha</button>
+                          </form>
+                        )}
+                        {sale.owner_user_id && (
+                          <form action={setCustomerTemporaryPasswordAction} className="admin-password-form admin-password-form-compact">
+                            <input type="hidden" name="sale_id" value={sale.id} />
+                            <input type="hidden" name="organization_id" value={sale.organization_id || ""} />
+                            <input type="hidden" name="user_id" value={sale.owner_user_id} />
+                            <input type="hidden" name="email" value={sale.buyer_email} />
+                            <input
+                              className="input input-small"
+                              name="temporary_password"
+                              type="password"
+                              minLength={8}
+                              placeholder="Senha temporaria"
+                              required
+                            />
+                            <button className="button button-secondary button-small" type="submit">Alterar</button>
                           </form>
                         )}
                       </div>

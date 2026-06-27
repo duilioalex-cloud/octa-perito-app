@@ -12,6 +12,10 @@ function adminPath(message?: string, type: "error" | "success" = "success") {
   return `/admin?${type}=${encodeURIComponent(message)}&t=${Date.now()}`;
 }
 
+function normalizeEmail(value: FormDataEntryValue | null) {
+  return String(value || "").trim().toLowerCase();
+}
+
 export async function updateOrganizationBillingStatusAction(formData: FormData) {
   const user = await requirePlatformAdmin();
   const organizationId = String(formData.get("organization_id") || "").trim();
@@ -50,6 +54,71 @@ export async function updateOrganizationBillingStatusAction(formData: FormData) 
   revalidatePath("/admin");
   revalidatePath("/dashboard");
   redirect(adminPath("Status da assinatura atualizado."));
+}
+
+export async function sendCustomerPasswordResetAction(formData: FormData) {
+  const user = await requirePlatformAdmin();
+  const email = normalizeEmail(formData.get("email"));
+  const organizationId = String(formData.get("organization_id") || "").trim() || null;
+  const saleId = String(formData.get("sale_id") || "").trim() || null;
+
+  if (!email || !email.includes("@")) redirect(adminPath("E-mail invalido para envio do acesso.", "error"));
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const admin = createAdminClient();
+  const { error } = await admin.auth.resetPasswordForEmail(email, {
+    redirectTo: `${siteUrl.replace(/\/$/, "")}/auth/callback?next=/redefinir-senha`,
+  });
+
+  if (error) redirect(adminPath(`Nao foi possivel enviar o link de senha: ${error.message}`, "error"));
+
+  await admin.from("subscription_events").insert({
+    organization_id: organizationId,
+    event_type: "admin_password_reset_sent",
+    provider: "manual",
+    created_by: user.id,
+    payload: {
+      email,
+      sale_id: saleId,
+      source: "admin_panel",
+    },
+  });
+
+  revalidatePath("/admin");
+  redirect(adminPath(`Link de definicao de senha enviado para ${email}.`));
+}
+
+export async function setCustomerTemporaryPasswordAction(formData: FormData) {
+  const user = await requirePlatformAdmin();
+  const userId = String(formData.get("user_id") || "").trim();
+  const email = normalizeEmail(formData.get("email"));
+  const organizationId = String(formData.get("organization_id") || "").trim() || null;
+  const saleId = String(formData.get("sale_id") || "").trim() || null;
+  const password = String(formData.get("temporary_password") || "");
+
+  if (!userId) redirect(adminPath("Usuario ainda nao vinculado. Envie o link de senha apos provisionar o cliente.", "error"));
+  if (password.length < 8) redirect(adminPath("A senha temporaria deve ter pelo menos 8 caracteres.", "error"));
+
+  const admin = createAdminClient();
+  const updatePayload = { password, email_confirm: true } as Parameters<typeof admin.auth.admin.updateUserById>[1];
+  const { error } = await admin.auth.admin.updateUserById(userId, updatePayload);
+  if (error) redirect(adminPath(`Nao foi possivel alterar a senha: ${error.message}`, "error"));
+
+  await admin.from("subscription_events").insert({
+    organization_id: organizationId,
+    event_type: "admin_temporary_password_set",
+    provider: "manual",
+    created_by: user.id,
+    payload: {
+      email,
+      sale_id: saleId,
+      user_id: userId,
+      source: "admin_panel",
+    },
+  });
+
+  revalidatePath("/admin");
+  redirect(adminPath(email ? `Senha temporaria alterada para ${email}.` : "Senha temporaria alterada."));
 }
 
 export async function processPaidCheckoutSessionAction(formData: FormData) {

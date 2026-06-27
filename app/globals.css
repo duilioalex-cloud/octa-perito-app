@@ -1136,6 +1136,9 @@ select option:disabled,
 .admin-status-form .field{gap:5px}
 .admin-status-form .field span{font-size:.56rem;text-transform:uppercase;letter-spacing:.06em}
 .admin-inline-form{margin-top:8px}
+.admin-access-actions{display:grid;gap:8px;margin-top:8px}
+.admin-password-form{display:grid;grid-template-columns:minmax(150px,1fr) auto;gap:8px;align-items:center}
+.admin-password-form-compact{grid-template-columns:minmax(150px,1fr) auto;width:100%;min-width:240px}
 .admin-action-stack{display:flex;align-items:flex-start;gap:7px;flex-wrap:wrap;min-width:230px}
 .admin-action-stack form{margin:0}
 .select-small,.input-small{min-height:36px;height:36px;padding:0 10px;border-radius:9px;font-size:.68rem}
@@ -1158,6 +1161,8 @@ select option:disabled,
   .admin-summary-grid,.billing-blocked-grid{grid-template-columns:1fr}
   .admin-status-form{grid-template-columns:1fr;min-width:260px}
   .admin-status-form .button{width:100%}
+  .admin-password-form{grid-template-columns:1fr}
+  .admin-password-form .button{width:100%}
   .billing-blocked-card{padding:23px}
   .billing-blocked-card h1{font-size:1.75rem}
 }
