@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { Logo } from "@/components/logo";
 import { signOutAction } from "@/app/actions/auth";
+import { Logo } from "@/components/logo";
+import { billingStatusLabels, isOrganizationBillingBlocked, type OrganizationBillingState } from "@/lib/billing";
 import type { CurrentOrganization } from "@/lib/current-organization";
 import type { Permission } from "@/lib/permissions";
 import { hasPermission, roleLabels } from "@/lib/permissions";
@@ -16,18 +17,28 @@ const navItems = [
   { href: "/alertas", label: "Alertas", icon: "!", permission: "alerts:view" },
   { href: "/ajuda", label: "Ajuda", icon: "?", permission: "dashboard:view" },
   { href: "/configuracoes", label: "Configuracoes", icon: "*", permission: "settings:view" },
-] satisfies Array<{ href: string; label: string; icon: string; permission: Permission }>;
+  { href: "/admin", label: "Admin SaaS", icon: "@", platformOnly: true },
+] satisfies Array<{ href: string; label: string; icon: string; permission?: Permission; platformOnly?: boolean }>;
 
 export function AppShell({
   organization,
   userEmail,
+  isPlatformAdmin = false,
+  billingState,
   children,
 }: {
   organization: CurrentOrganization;
   userEmail: string;
+  isPlatformAdmin?: boolean;
+  billingState?: OrganizationBillingState;
   children: React.ReactNode;
 }) {
-  const visibleNavItems = navItems.filter((item) => hasPermission(organization.role, item.permission));
+  const visibleNavItems = navItems.filter((item) => {
+    if (item.platformOnly) return isPlatformAdmin;
+    return item.permission ? hasPermission(organization.role, item.permission) : true;
+  });
+  const billingStatus = billingState?.billing_status;
+  const billingBlocked = isOrganizationBillingBlocked(billingState);
 
   return (
     <div className="app-shell">
@@ -46,6 +57,11 @@ export function AppShell({
             <strong>{organization.name}</strong>
             <span>{roleLabels[organization.role]}</span>
             <span>{userEmail}</span>
+            {billingStatus && (
+              <span className={`organization-billing organization-billing-${billingStatus}`}>
+                {billingBlocked ? "Assinatura bloqueada" : billingStatusLabels[billingStatus]}
+              </span>
+            )}
           </div>
           <form action={signOutAction}><button className="button button-ghost button-full" type="submit">Sair</button></form>
         </div>

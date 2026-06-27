@@ -1107,3 +1107,53 @@ select option:disabled,
   .help-hero .button{width:100%}
   .help-menu-list,.help-support-grid{grid-template-columns:1fr}
 }
+
+/* OCTA Perito v0.8.4 - painel administrativo SaaS */
+.organization-billing{width:max-content;margin-top:8px;padding:5px 8px;border-radius:999px;color:#c9fff1!important;background:rgba(66,223,186,.1);font-size:.58rem!important;font-weight:900;text-transform:uppercase;letter-spacing:.04em}
+.organization-billing-past_due{color:#ffe6be!important;background:rgba(255,209,102,.13)}
+.organization-billing-blocked,.organization-billing-cancelled{color:#ffd9dd!important;background:rgba(255,127,140,.13)}
+.admin-page-header{align-items:flex-start}
+.admin-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:16px}
+.admin-summary-card{padding:18px 20px;min-height:118px}
+.admin-summary-card span,.admin-summary-card strong,.admin-summary-card small{display:block}
+.admin-summary-card span{color:var(--muted);font-size:.66rem;font-weight:850;text-transform:uppercase;letter-spacing:.06em}
+.admin-summary-card strong{margin:8px 0 4px;color:#f2f9fd;font-size:1.55rem;line-height:1.08}
+.admin-summary-card small{color:#71889c;font-size:.62rem;line-height:1.35}
+.admin-control-panel{margin-top:16px}
+.admin-control-panel .panel-header p{margin:5px 0 0;color:var(--muted);font-size:.72rem}
+.admin-table table{min-width:1180px}
+.admin-table th,.admin-table td{font-size:.66rem;vertical-align:top}
+.admin-client-name,.admin-client-owner,.admin-money{display:block;color:#eef7fb;font-size:.74rem}
+.admin-money{font-size:.8rem}
+.admin-client-meta,.admin-client-warning{display:block;margin-top:5px;color:var(--muted);font-size:.62rem;line-height:1.35}
+.admin-client-warning{max-width:220px;color:#ffe6be}
+.admin-billing-status{display:inline-flex;width:max-content;align-items:center;margin-bottom:4px;padding:6px 9px;border-radius:999px;font-size:.56rem;font-weight:950;text-transform:uppercase;letter-spacing:.035em}
+.admin-billing-status-active,.admin-billing-status-trialing{color:#c9fff1;background:rgba(66,223,186,.11)}
+.admin-billing-status-past_due{color:#ffe6be;background:rgba(255,209,102,.12)}
+.admin-billing-status-blocked,.admin-billing-status-cancelled{color:#ffd9dd;background:rgba(255,127,140,.13)}
+.admin-status-form{display:grid;grid-template-columns:minmax(130px,.55fr) minmax(190px,1fr) auto;gap:8px;align-items:end;min-width:430px}
+.admin-status-form .field{gap:5px}
+.admin-status-form .field span{font-size:.56rem;text-transform:uppercase;letter-spacing:.06em}
+.select-small,.input-small{min-height:36px;height:36px;padding:0 10px;border-radius:9px;font-size:.68rem}
+.billing-blocked-page{min-height:calc(100vh - 68px);display:grid;place-items:center}
+.billing-blocked-card{width:min(860px,100%);padding:30px}
+.billing-blocked-card h1{margin:0;font-size:2.1rem;letter-spacing:-.04em}
+.billing-blocked-card p{max-width:690px;margin:10px 0 0;color:var(--muted);line-height:1.55}
+.billing-blocked-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;overflow:hidden;margin:22px 0;border:1px solid var(--line);border-radius:14px;background:var(--line)}
+.billing-blocked-grid>div{padding:16px;background:#0a1a2a}
+.billing-blocked-grid span,.billing-blocked-grid strong{display:block}
+.billing-blocked-grid span{color:var(--muted);font-size:.65rem;text-transform:uppercase;letter-spacing:.06em}
+.billing-blocked-grid strong{margin-top:6px;color:#eef7fb;font-size:.84rem}
+.billing-blocked-note{margin-bottom:0}
+@media(max-width:1180px){
+  .admin-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:760px){
+  .admin-page-header{display:block}
+  .admin-page-header .header-actions{justify-content:flex-start}
+  .admin-summary-grid,.billing-blocked-grid{grid-template-columns:1fr}
+  .admin-status-form{grid-template-columns:1fr;min-width:260px}
+  .admin-status-form .button{width:100%}
+  .billing-blocked-card{padding:23px}
+  .billing-blocked-card h1{font-size:1.75rem}
+}
