@@ -14,6 +14,7 @@ const navItems = [
   { href: "/financeiro", label: "Financeiro", icon: "$", permission: "finance:view" },
   { href: "/agenda", label: "Agenda", icon: "A", permission: "calendar:view" },
   { href: "/alertas", label: "Alertas", icon: "!", permission: "alerts:view" },
+  { href: "/ajuda", label: "Ajuda", icon: "?", permission: "dashboard:view" },
   { href: "/configuracoes", label: "Configuracoes", icon: "*", permission: "settings:view" },
 ] satisfies Array<{ href: string; label: string; icon: string; permission: Permission }>;
 
