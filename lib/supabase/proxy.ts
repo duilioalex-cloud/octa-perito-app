@@ -7,6 +7,9 @@ const publicRoutes = [
   "/recuperar-senha",
   "/redefinir-senha",
   "/auth/callback",
+  "/compra/sucesso",
+  "/api/billing/abacatepay/checkout",
+  "/api/webhooks/abacatepay",
   "/api/health",
 ];
 
