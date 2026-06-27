@@ -100,6 +100,12 @@ export async function POST(request: Request) {
       { status: 500, headers },
     );
   }
+  if (plan.mode === "checkout" && !plan.productId) {
+    return NextResponse.json(
+      { error: "Configure ABACATEPAY_ANNUAL_PRODUCT_ID na Vercel com o ID do produto anual da Abacate Pay." },
+      { status: 500, headers },
+    );
+  }
   if (plan.amountCents <= 0) {
     return NextResponse.json({ error: `Configure o valor do plano ${plan.planCode} na Vercel.` }, { status: 500, headers });
   }

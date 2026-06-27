@@ -181,38 +181,18 @@ export async function createAbacatePayOneTimeCheckout(input: {
   returnUrl: string;
   metadata?: Record<string, unknown>;
 }) {
-  const checkoutBody = {
-    products: [
-      {
-        externalId: input.plan.productId || input.plan.planCode,
-        name: input.plan.productName,
-        description: input.plan.productDescription,
-        quantity: 1,
-        price: input.plan.amountCents,
-      },
-    ],
-    customer: input.customer,
+  if (!input.plan.productId) {
+    throw new Error("Configure ABACATEPAY_ANNUAL_PRODUCT_ID na Vercel com o ID do produto anual da Abacate Pay.");
+  }
+
+  return requestAbacatePay<AbacatePayCheckout>("checkouts/create", {
+    customerId: input.customerId,
     externalId: input.externalId,
     completionUrl: input.completionUrl,
     returnUrl: input.returnUrl,
+    items: [{ id: input.plan.productId, quantity: 1 }],
+    methods: input.plan.methods,
     card: { maxInstallments: input.plan.maxInstallments || 12 },
     metadata: input.metadata || {},
-  };
-
-  try {
-    return await requestAbacatePay<AbacatePayCheckout>("checkouts/create", checkoutBody);
-  } catch (error) {
-    if (!input.plan.productId) throw error;
-
-    return requestAbacatePay<AbacatePayCheckout>("checkouts/create", {
-      customerId: input.customerId,
-      externalId: input.externalId,
-      completionUrl: input.completionUrl,
-      returnUrl: input.returnUrl,
-      items: [{ id: input.plan.productId, quantity: 1 }],
-      methods: input.plan.methods,
-      card: { maxInstallments: input.plan.maxInstallments || 12 },
-      metadata: input.metadata || {},
-    });
-  }
+  });
 }
