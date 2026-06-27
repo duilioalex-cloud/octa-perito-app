@@ -1,5 +1,11 @@
 import Link from "next/link";
-import { processPaidCheckoutSessionAction, updateOrganizationBillingStatusAction } from "@/app/actions/admin";
+import {
+  cancelCheckoutTestAction,
+  deleteCheckoutSessionAction,
+  deleteTestOrganizationAction,
+  processPaidCheckoutSessionAction,
+  updateOrganizationBillingStatusAction,
+} from "@/app/actions/admin";
 import { billingStatusLabels, normalizeBillingStatus, type BillingStatus } from "@/lib/billing";
 import { requirePlatformAdmin } from "@/lib/platform-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -7,6 +13,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 type AdminPageProps = {
   searchParams: Promise<{ error?: string; success?: string }>;
 };
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 type OrganizationRow = {
   id: string;
@@ -112,6 +121,18 @@ function isAnnualPlan(planCode?: string | null) {
 function monthlyRevenueShare(subscription: SubscriptionRow) {
   const amount = subscription.amount_cents ?? 0;
   return isAnnualPlan(subscription.plan_code) ? Math.round(amount / 12) : amount;
+}
+
+function canProcessSale(status: string) {
+  return !["provisioned", "cancelled"].includes(status);
+}
+
+function canCancelSale(status: string) {
+  return !["provisioned", "cancelled"].includes(status);
+}
+
+function canDeleteSale(sale: SaleRow) {
+  return sale.status !== "provisioned" && !sale.organization_id;
 }
 
 export default async function AdminPage({ searchParams }: AdminPageProps) {
@@ -297,6 +318,10 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
                         </label>
                         <button className="button button-primary button-small" type="submit">Salvar</button>
                       </form>
+                      <form action={deleteTestOrganizationAction} className="admin-inline-form">
+                        <input type="hidden" name="organization_id" value={org.id} />
+                        <button className="button button-danger button-small" type="submit">Excluir cliente teste</button>
+                      </form>
                     </td>
                   </tr>
                 );
@@ -372,14 +397,30 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
                       )}
                     </td>
                     <td>
-                      {sale.status !== "provisioned" ? (
-                        <form action={processPaidCheckoutSessionAction}>
-                          <input type="hidden" name="sale_id" value={sale.id} />
-                          <button className="button button-primary button-small" type="submit">Processar pago</button>
-                        </form>
-                      ) : (
-                        <span className="admin-client-meta">Concluido</span>
-                      )}
+                      <div className="admin-action-stack">
+                        {canProcessSale(sale.status) ? (
+                          <form action={processPaidCheckoutSessionAction}>
+                            <input type="hidden" name="sale_id" value={sale.id} />
+                            <button className="button button-primary button-small" type="submit">Processar pago</button>
+                          </form>
+                        ) : sale.status === "provisioned" ? (
+                          <span className="admin-client-meta">Concluido</span>
+                        ) : (
+                          <span className="admin-client-meta">Cancelado</span>
+                        )}
+                        {canCancelSale(sale.status) && (
+                          <form action={cancelCheckoutTestAction}>
+                            <input type="hidden" name="sale_id" value={sale.id} />
+                            <button className="button button-secondary button-small" type="submit">Cancelar teste</button>
+                          </form>
+                        )}
+                        {canDeleteSale(sale) && (
+                          <form action={deleteCheckoutSessionAction}>
+                            <input type="hidden" name="sale_id" value={sale.id} />
+                            <button className="button button-danger button-small" type="submit">Excluir compra</button>
+                          </form>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

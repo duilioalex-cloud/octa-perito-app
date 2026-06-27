@@ -9,7 +9,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 function adminPath(message?: string, type: "error" | "success" = "success") {
   if (!message) return "/admin";
-  return `/admin?${type}=${encodeURIComponent(message)}`;
+  return `/admin?${type}=${encodeURIComponent(message)}&t=${Date.now()}`;
 }
 
 export async function updateOrganizationBillingStatusAction(formData: FormData) {
@@ -113,4 +113,139 @@ export async function processPaidCheckoutSessionAction(formData: FormData) {
   revalidatePath("/admin");
   revalidatePath("/dashboard");
   redirect(adminPath("Compra processada e cliente liberado."));
+}
+
+export async function cancelCheckoutTestAction(formData: FormData) {
+  const user = await requirePlatformAdmin();
+  const saleId = String(formData.get("sale_id") || "").trim();
+  if (!saleId) redirect(adminPath("Compra invalida.", "error"));
+
+  const admin = createAdminClient();
+  const { data: sale, error: saleError } = await admin
+    .from("sales_checkout_sessions")
+    .select("id,status,organization_id,buyer_email,metadata")
+    .eq("id", saleId)
+    .maybeSingle();
+
+  if (saleError || !sale) {
+    redirect(adminPath(`Nao foi possivel localizar a compra: ${saleError?.message || "registro nao encontrado"}`, "error"));
+  }
+  if (sale.status === "provisioned") {
+    redirect(adminPath("Compra provisionada nao deve ser cancelada como teste. Exclua o cliente se for um ambiente de teste.", "error"));
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await admin
+    .from("sales_checkout_sessions")
+    .update({
+      status: "cancelled",
+      cancelled_at: now,
+      metadata: {
+        ...((sale.metadata as Record<string, unknown> | null) || {}),
+        cancelled_as_test: true,
+        cancelled_by: user.id,
+        cancelled_at: now,
+      },
+      updated_at: now,
+    })
+    .eq("id", saleId);
+
+  if (error) redirect(adminPath(`Nao foi possivel cancelar o teste: ${error.message}`, "error"));
+
+  await admin.from("subscription_events").insert({
+    organization_id: sale.organization_id || null,
+    event_type: "checkout_test_cancelled",
+    provider: "manual",
+    provider_event_id: `cancel-test-${sale.id}`,
+    created_by: user.id,
+    payload: {
+      sale_id: sale.id,
+      buyer_email: sale.buyer_email,
+      source: "admin_panel",
+    },
+  });
+
+  revalidatePath("/admin");
+  redirect(adminPath("Checkout de teste cancelado."));
+}
+
+export async function deleteCheckoutSessionAction(formData: FormData) {
+  await requirePlatformAdmin();
+  const saleId = String(formData.get("sale_id") || "").trim();
+  if (!saleId) redirect(adminPath("Compra invalida.", "error"));
+
+  const admin = createAdminClient();
+  const { data: sale, error: saleError } = await admin
+    .from("sales_checkout_sessions")
+    .select("id,status,organization_id")
+    .eq("id", saleId)
+    .maybeSingle();
+
+  if (saleError || !sale) {
+    redirect(adminPath(`Nao foi possivel localizar a compra: ${saleError?.message || "registro nao encontrado"}`, "error"));
+  }
+  if (sale.status === "provisioned" || sale.organization_id) {
+    redirect(adminPath("Esta compra ja criou cliente. Exclua o cliente para remover os dados vinculados.", "error"));
+  }
+
+  const { error } = await admin.from("sales_checkout_sessions").delete().eq("id", saleId);
+  if (error) redirect(adminPath(`Nao foi possivel excluir a compra: ${error.message}`, "error"));
+
+  revalidatePath("/admin");
+  redirect(adminPath("Compra de teste excluida."));
+}
+
+export async function deleteTestOrganizationAction(formData: FormData) {
+  const user = await requirePlatformAdmin();
+  const organizationId = String(formData.get("organization_id") || "").trim();
+  if (!organizationId) redirect(adminPath("Cliente invalido.", "error"));
+
+  const admin = createAdminClient();
+  const { data: organization, error: organizationError } = await admin
+    .from("organizations")
+    .select("id,name,slug,current_subscription_id,billing_customer_id")
+    .eq("id", organizationId)
+    .maybeSingle();
+
+  if (organizationError || !organization) {
+    redirect(adminPath(`Nao foi possivel localizar o cliente: ${organizationError?.message || "registro nao encontrado"}`, "error"));
+  }
+
+  const now = new Date().toISOString();
+  await admin
+    .from("sales_checkout_sessions")
+    .update({
+      status: "cancelled",
+      cancelled_at: now,
+      organization_id: null,
+      metadata: {
+        deleted_test_client_id: organization.id,
+        deleted_test_client_name: organization.name,
+        deleted_by: user.id,
+        deleted_at: now,
+      },
+      updated_at: now,
+    })
+    .eq("organization_id", organizationId);
+
+  await admin
+    .from("organizations")
+    .update({
+      current_subscription_id: null,
+      billing_customer_id: null,
+      updated_at: now,
+    })
+    .eq("id", organizationId);
+
+  await admin.from("subscription_events").delete().eq("organization_id", organizationId);
+  await admin.from("payments").delete().eq("organization_id", organizationId);
+  await admin.from("subscriptions").delete().eq("organization_id", organizationId);
+  await admin.from("billing_customers").delete().eq("organization_id", organizationId);
+
+  const { error } = await admin.from("organizations").delete().eq("id", organizationId);
+  if (error) redirect(adminPath(`Nao foi possivel excluir o cliente de teste: ${error.message}`, "error"));
+
+  revalidatePath("/admin");
+  revalidatePath("/dashboard");
+  redirect(adminPath(`Cliente de teste ${organization.name || organization.slug} excluido.`));
 }

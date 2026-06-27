@@ -59,6 +59,7 @@ button { cursor: pointer; }
 .button-primary { color:#041612; background: linear-gradient(135deg,var(--green),#78efd3); }
 .button-secondary { color:var(--text); border:1px solid var(--line); background:rgba(255,255,255,.035); }
 .button-ghost { color:#c3d2df; border:1px solid var(--line); background:transparent; }
+.button-danger { color:#ffd9dd; border:1px solid rgba(255,127,140,.34); background:rgba(255,127,140,.1); }
 .button-full { width:100%; }
 .form-meta { display:flex; justify-content:space-between; gap:14px; margin-top:2px; color:var(--muted); font-size:.8rem; }
 .form-meta a,.auth-switch a { color:var(--green); font-weight:750; }
@@ -1134,6 +1135,9 @@ select option:disabled,
 .admin-status-form{display:grid;grid-template-columns:minmax(130px,.55fr) minmax(190px,1fr) auto;gap:8px;align-items:end;min-width:430px}
 .admin-status-form .field{gap:5px}
 .admin-status-form .field span{font-size:.56rem;text-transform:uppercase;letter-spacing:.06em}
+.admin-inline-form{margin-top:8px}
+.admin-action-stack{display:flex;align-items:flex-start;gap:7px;flex-wrap:wrap;min-width:230px}
+.admin-action-stack form{margin:0}
 .select-small,.input-small{min-height:36px;height:36px;padding:0 10px;border-radius:9px;font-size:.68rem}
 .billing-blocked-page{min-height:calc(100vh - 68px);display:grid;place-items:center}
 .billing-blocked-card{width:min(860px,100%);padding:30px}
