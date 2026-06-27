@@ -553,3 +553,80 @@ select option:disabled,
   .finance-transaction-row>div:not(.transaction-icon):not(.finance-transaction-main):not(.finance-transaction-actions){grid-column:2}
   .finance-transaction-actions{grid-column:1/-1;justify-content:flex-start}
 }
+
+/* OCTA Perito v0.6.6 — despesas e deslocamentos */
+.expense-overview-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.expense-process-list { display:grid; }
+.expense-process-row { display:grid; grid-template-columns:minmax(260px,1.25fr) repeat(4,minmax(125px,.48fr)) 24px; gap:14px; align-items:center; padding:16px 10px; border-top:1px solid var(--line); border-radius:10px; transition:.16s ease; }
+.expense-process-row:first-child { border-top:0; }
+.expense-process-row:hover { background:rgba(255,255,255,.025); transform:translateX(2px); }
+.expense-process-row span,.expense-process-row strong { display:block; }
+.expense-process-row > div > span { color:var(--muted); font-size:.66rem; }
+.expense-process-row > div > strong { margin-top:5px; font-size:.8rem; }
+.expense-main-grid { grid-template-columns:minmax(0,1.45fr) minmax(280px,.55fr); }
+.expense-summary-card { grid-template-columns:repeat(5,1fr); }
+.trip-list,.expense-list { display:grid; gap:14px; }
+.trip-card,.expense-card { padding:18px; border:1px solid var(--line); border-radius:14px; background:rgba(255,255,255,.018); }
+.trip-card-header { display:flex; justify-content:space-between; gap:18px; align-items:flex-start; }
+.trip-card-header strong,.trip-card-header span,.trip-card-header b { display:block; }
+.trip-card-header > div:first-child > strong { font-size:.9rem; }
+.trip-card-header > div:first-child > span { margin-top:5px; color:var(--muted); font-size:.72rem; }
+.trip-card-header > div:last-child { text-align:right; }
+.trip-card-header > div:last-child > strong { margin-top:7px; font-size:1rem; }
+.trip-status,.expense-status { display:inline-flex!important; width:max-content; padding:5px 8px; border-radius:999px; font-size:.57rem!important; font-weight:900; text-transform:uppercase; }
+.trip-status-planned,.expense-status-planned { color:#c5dcff; background:rgba(90,146,255,.11); }
+.trip-status-confirmed,.expense-status-pending { color:#ffe7a3; background:rgba(255,209,102,.1); }
+.trip-status-completed,.expense-status-paid { color:#bffff0; background:rgba(66,223,186,.11); }
+.trip-status-cancelled,.expense-status-cancelled { color:#a7b5c1; background:rgba(167,181,193,.1); }
+.trip-cost-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:1px; margin-top:15px; overflow:hidden; border:1px solid var(--line); border-radius:11px; background:var(--line); }
+.trip-cost-grid > div { padding:12px; background:#0a1a2a; }
+.trip-cost-grid span,.trip-cost-grid strong { display:block; }
+.trip-cost-grid span { color:var(--muted); font-size:.62rem; }
+.trip-cost-grid strong { margin-top:5px; font-size:.72rem; }
+.trip-notes,.expense-notes { margin:13px 0 0; color:#c5d1db; font-size:.72rem; line-height:1.55; white-space:pre-wrap; }
+.expense-row-actions { display:flex; gap:7px; flex-wrap:wrap; margin-top:14px; }
+.expense-row-actions form { margin:0; }
+.inline-edit-panel { margin-top:14px; border-top:1px solid var(--line); }
+.inline-edit-panel > summary { padding:13px 0 0; color:var(--green); font-size:.7rem; font-weight:850; cursor:pointer; }
+.inline-edit-panel[open] > summary { margin-bottom:14px; }
+.expense-add-panel { margin-top:18px; }
+.trip-form,.expense-form { padding-top:4px; }
+.expense-list { margin-top:4px; }
+.expense-card { display:grid; grid-template-columns:minmax(260px,1.15fr) minmax(115px,.35fr) minmax(140px,.45fr) minmax(150px,.45fr); gap:14px; align-items:center; }
+.expense-card-main { display:grid; grid-template-columns:40px minmax(0,1fr); gap:12px; align-items:center; }
+.expense-category-icon { width:38px; height:38px; display:grid; place-items:center; border-radius:10px; color:var(--green); background:rgba(66,223,186,.09); font-size:1rem; }
+.expense-card span,.expense-card strong,.expense-card small,.expense-card b { display:block; }
+.expense-card > div > span { color:var(--muted); font-size:.64rem; }
+.expense-card > div > strong { margin-top:4px; font-size:.76rem; }
+.expense-card small { margin-top:4px; color:var(--muted); font-size:.61rem; }
+.expense-card-main strong { font-size:.82rem!important; }
+.expense-card-main span { margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.expense-card > .expense-row-actions,.expense-card > .expense-notes,.expense-card > .inline-edit-panel { grid-column:1/-1; }
+.expense-checks { align-self:stretch; }
+.check-line { display:flex; gap:9px; align-items:center; min-height:33px; color:#d8e4ec; font-size:.72rem; }
+.check-line input { width:17px; height:17px; accent-color:var(--green); }
+
+@media (max-width:1280px){
+  .expense-overview-grid{grid-template-columns:repeat(3,1fr)}
+  .expense-process-row{grid-template-columns:minmax(240px,1fr) repeat(3,minmax(115px,.42fr)) 24px}
+  .expense-process-row>div:nth-child(5){display:none}
+  .trip-cost-grid{grid-template-columns:repeat(3,1fr)}
+  .expense-card{grid-template-columns:minmax(240px,1fr) repeat(2,minmax(130px,.42fr))}
+  .expense-card>div:nth-child(4){grid-column:2/-1}
+}
+@media (max-width:1050px){
+  .expense-main-grid{grid-template-columns:1fr}
+  .expense-summary-card{grid-template-columns:repeat(3,1fr)}
+  .expense-process-row{grid-template-columns:minmax(230px,1fr) repeat(2,minmax(115px,.4fr)) 24px}
+  .expense-process-row>div:nth-child(4),.expense-process-row>div:nth-child(5){display:none}
+}
+@media (max-width:760px){
+  .expense-overview-grid,.expense-summary-card,.trip-cost-grid{grid-template-columns:1fr}
+  .expense-process-row{grid-template-columns:1fr;gap:9px;padding:17px 6px}
+  .expense-process-row>div:nth-child(4),.expense-process-row>div:nth-child(5){display:block}
+  .expense-card{grid-template-columns:1fr}
+  .expense-card>div:nth-child(4),.expense-card>.expense-row-actions,.expense-card>.expense-notes,.expense-card>.inline-edit-panel{grid-column:1}
+  .expense-card-main span{white-space:normal}
+  .trip-card-header{display:grid}
+  .trip-card-header>div:last-child{text-align:left}
+}
