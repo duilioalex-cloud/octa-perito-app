@@ -1,5 +1,5 @@
-# OCTA Perito v0.6.4
+# OCTA Perito v0.7.0
 
-Hotfix de implantação para a Vercel usando Bun como gerenciador de dependências, preservando integralmente o módulo de Honorários da v0.6.
+Sistema de gestão de perícias judiciais com painel financeiro e operacional, processos, agenda, honorários, despesas, documentos e laudos.
 
-Consulte `README_HOTFIX_V0.6.4.md`.
+Consulte `README_V0.7.0.md` para as alterações, regras dos filtros e instruções de publicação.

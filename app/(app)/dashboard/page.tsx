@@ -76,6 +76,7 @@ type EventRow = {
 };
 
 type FeeRow = {
+  process_id: string;
   proposed_amount: number | string | null;
   approved_amount: number | string | null;
   proposed_at: string | null;
@@ -135,7 +136,7 @@ function daysSince(value: string | null | undefined, reference: Date) {
   return Math.floor((reference.getTime() - date.getTime()) / 86400000);
 }
 
-export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ period?: string; process?: string }> }) {
   const query = await searchParams;
   const organization = await getCurrentOrganization();
   if (!organization) return null;
@@ -161,13 +162,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     supabase.from("processes").select("id,process_number,subject,plaintiff,defendant,status,priority,report_due_at,financial_status,last_movement_at,created_at").eq("organization_id", organization.id).order("last_movement_at", { ascending: false }),
     supabase.from("expert_reports").select("id,process_id,title,status,updated_at").eq("organization_id", organization.id).order("updated_at", { ascending: false }),
     supabase.from("calendar_events").select("id,process_id,title,event_type,status,priority,starts_at,location_name,city,processes(id,process_number)").eq("organization_id", organization.id).not("status", "in", "(completed,cancelled)").order("starts_at", { ascending: true }),
-    supabase.from("process_fees").select("proposed_amount,approved_amount,proposed_at,approved_at,status").eq("organization_id", organization.id).neq("status", "cancelled"),
+    supabase.from("process_fees").select("process_id,proposed_amount,approved_amount,proposed_at,approved_at,status").eq("organization_id", organization.id).neq("status", "cancelled"),
     supabase.from("fee_transactions").select("process_id,transaction_type,deposit_delta,received_delta,occurred_at,created_at").eq("organization_id", organization.id).eq("status", "confirmed"),
     supabase.from("process_expenses").select("process_id,category,total_amount,payment_status,expense_date,is_reimbursable,reimbursement_status").eq("organization_id", organization.id).neq("payment_status", "cancelled"),
     supabase.from("process_trips").select("process_id,status,total_cost,departure_at,created_at").eq("organization_id", organization.id).neq("status", "cancelled"),
   ]);
 
-  const dashboard = dashboardResult.data;
   const financialRows = (financialRowsResult.data ?? []) as FinancialRow[];
   const processes = (processesResult.data ?? []) as ProcessRow[];
   const reports = (reportsResult.data ?? []) as ReportRow[];
@@ -179,13 +179,26 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
   const hasDataError = [dashboardResult.error, financialRowsResult.error, processesResult.error, reportsResult.error, eventsResult.error, feesResult.error, transactionsResult.error, expensesResult.error, tripsResult.error].some(Boolean);
 
-  const proposedInPeriod = sum(fees.filter((fee) => dateInPeriod(fee.proposed_at, selectedPeriod.start, selectedPeriod.end)), (fee) => numberValue(fee.proposed_amount));
-  const approvedInPeriod = sum(fees.filter((fee) => dateInPeriod(fee.approved_at, selectedPeriod.start, selectedPeriod.end)), (fee) => numberValue(fee.approved_amount));
-  const transactionsInPeriod = transactions.filter((transaction) => dateInPeriod(transaction.occurred_at || transaction.created_at, selectedPeriod.start, selectedPeriod.end));
+  const selectedProcessId = processes.some((process) => process.id === query.process) ? query.process ?? null : null;
+  const selectedProcess = selectedProcessId ? processes.find((process) => process.id === selectedProcessId) ?? null : null;
+  const processMatches = (processId: string | null | undefined) => !selectedProcessId || processId === selectedProcessId;
+
+  const scopedProcesses = selectedProcessId ? processes.filter((process) => process.id === selectedProcessId) : processes;
+  const scopedFinancialRows = financialRows.filter((row) => processMatches(row.process_id));
+  const scopedReports = reports.filter((report) => processMatches(report.process_id));
+  const scopedEvents = events.filter((event) => processMatches(event.process_id));
+  const scopedFees = fees.filter((fee) => processMatches(fee.process_id));
+  const scopedTransactions = transactions.filter((transaction) => processMatches(transaction.process_id));
+  const scopedExpenses = expenses.filter((expense) => processMatches(expense.process_id));
+  const scopedTrips = trips.filter((trip) => processMatches(trip.process_id));
+
+  const proposedInPeriod = sum(scopedFees.filter((fee) => dateInPeriod(fee.proposed_at, selectedPeriod.start, selectedPeriod.end)), (fee) => numberValue(fee.proposed_amount));
+  const approvedInPeriod = sum(scopedFees.filter((fee) => dateInPeriod(fee.approved_at, selectedPeriod.start, selectedPeriod.end)), (fee) => numberValue(fee.approved_amount));
+  const transactionsInPeriod = scopedTransactions.filter((transaction) => dateInPeriod(transaction.occurred_at || transaction.created_at, selectedPeriod.start, selectedPeriod.end));
   const depositedInPeriod = sum(transactionsInPeriod, (transaction) => Math.max(numberValue(transaction.deposit_delta), 0));
   const receivedInPeriod = sum(transactionsInPeriod, (transaction) => numberValue(transaction.received_delta));
-  const expensesInPeriod = expenses.filter((expense) => dateInPeriod(expense.expense_date, selectedPeriod.start, selectedPeriod.end));
-  const tripsInPeriod = trips.filter((trip) => dateInPeriod(trip.departure_at || trip.created_at, selectedPeriod.start, selectedPeriod.end));
+  const expensesInPeriod = scopedExpenses.filter((expense) => dateInPeriod(expense.expense_date, selectedPeriod.start, selectedPeriod.end));
+  const tripsInPeriod = scopedTrips.filter((trip) => dateInPeriod(trip.departure_at || trip.created_at, selectedPeriod.start, selectedPeriod.end));
   const expensesPaidInPeriod = sum(expensesInPeriod.filter((expense) => expense.payment_status === "paid"), (expense) => numberValue(expense.total_amount));
   const tripsCompletedInPeriod = sum(tripsInPeriod.filter((trip) => trip.status === "completed"), (trip) => numberValue(trip.total_cost));
   const forecastExpensesInPeriod = sum(expensesInPeriod, (expense) => numberValue(expense.total_amount));
@@ -195,45 +208,57 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const cashResultInPeriod = receivedInPeriod - realizedCostsInPeriod;
   const forecastResultInPeriod = approvedInPeriod - forecastCostsInPeriod;
 
-  const activeProcesses = processes.filter((process) => process.status !== "closed");
-  const reportsInProgress = reports.filter((report) => ["draft", "in_review"].includes(report.status));
-  const overdueEvents = events.filter((event) => new Date(event.starts_at) < now);
-  const upcomingEvents = events.filter((event) => {
+  const activeProcesses = scopedProcesses.filter((process) => process.status !== "closed");
+  const reportsInProgress = scopedReports.filter((report) => ["draft", "in_review"].includes(report.status));
+  const activeEvents = scopedEvents.filter((event) => !["completed", "cancelled"].includes(event.status));
+  const upcomingEvents = activeEvents.filter((event) => {
     const starts = new Date(event.starts_at);
     return starts >= now && starts <= nextSeven;
   });
-  const financialPending = financialRows.filter((row) => !["fully_released", "cancelled", "not_defined"].includes(row.financial_status));
+  const deadlineTypes = new Set(["report_due", "clarification_due", "manifestation_due", "financial_due"]);
+  const diligenceTypes = new Set(["diligence", "inspection"]);
+  const deadlineEvents = activeEvents.filter((event) => deadlineTypes.has(event.event_type));
+  const upcomingDeadlines = deadlineEvents.filter((event) => {
+    const starts = new Date(event.starts_at);
+    return starts >= now && starts <= nextSeven;
+  });
+  const overdueDeadlines = deadlineEvents.filter((event) => new Date(event.starts_at) < now);
+  const activeDiligences = activeEvents.filter((event) => diligenceTypes.has(event.event_type));
+  const upcomingDiligences = activeDiligences.filter((event) => new Date(event.starts_at) >= now);
+  const overdueDiligences = activeDiligences.filter((event) => new Date(event.starts_at) < now);
+  const financialPending = scopedFinancialRows.filter((row) => !["fully_released", "cancelled", "not_defined"].includes(row.financial_status));
   const staleProcesses = activeProcesses.filter((process) => daysSince(process.last_movement_at || process.created_at, now) >= 30);
   const urgentProcesses = activeProcesses.filter((process) => ["high", "urgent"].includes(process.priority));
 
+  const scheduledReportProcessIds = new Set(deadlineEvents.filter((event) => event.event_type === "report_due" && event.process_id).map((event) => event.process_id as string));
   const reportDueSoon = activeProcesses.filter((process) => {
     const days = daysFromNow(process.report_due_at, now);
-    return days !== null && days >= 0 && days <= 7 && !["delivered", "closed"].includes(process.status);
+    return days !== null && days >= 0 && days <= 7 && !["delivered", "closed"].includes(process.status) && !scheduledReportProcessIds.has(process.id);
   });
 
-  const portfolioApproved = numberValue(dashboard?.approved_total);
-  const portfolioProposed = numberValue(dashboard?.proposed_total);
-  const portfolioDeposited = numberValue(dashboard?.deposited_total);
-  const portfolioReceived = numberValue(dashboard?.received_total);
-  const portfolioDepositBalance = numberValue(dashboard?.deposit_balance);
-  const portfolioForecastResult = numberValue(dashboard?.forecast_result);
-  const portfolioReimbursements = numberValue(dashboard?.reimbursable_pending_total);
+  const portfolioApproved = sum(scopedFinancialRows, (row) => numberValue(row.approved_total));
+  const portfolioProposed = sum(scopedFinancialRows, (row) => numberValue(row.proposed_total));
+  const portfolioDeposited = sum(scopedFinancialRows, (row) => numberValue(row.deposited_total));
+  const portfolioReceived = sum(scopedFinancialRows, (row) => numberValue(row.received_total));
+  const portfolioDepositBalance = sum(scopedFinancialRows, (row) => numberValue(row.deposit_balance));
+  const portfolioForecastResult = sum(scopedFinancialRows, (row) => numberValue(row.forecast_result));
+  const portfolioReimbursements = sum(scopedFinancialRows, (row) => numberValue(row.reimbursable_pending_total));
   const portfolioReceivable = Math.max(portfolioApproved - portfolioReceived, 0);
-  const portfolioCosts = numberValue(dashboard?.expenses_forecast_total) + numberValue(dashboard?.trip_cost_forecast_total);
+  const portfolioCosts = sum(scopedFinancialRows, (row) => numberValue(row.expenses_forecast_total) + numberValue(row.trip_cost_forecast_total));
 
   const monthBuckets = lastMonthBuckets(6, now);
   const monthMap = new Map(monthBuckets.map((bucket) => [bucket.key, bucket]));
-  for (const transaction of transactions) {
+  for (const transaction of scopedTransactions) {
     const key = monthKey(transaction.occurred_at || transaction.created_at);
     const bucket = monthMap.get(key);
     if (bucket) bucket.revenue += numberValue(transaction.received_delta);
   }
-  for (const expense of expenses) {
+  for (const expense of scopedExpenses) {
     if (expense.payment_status !== "paid") continue;
     const bucket = monthMap.get(monthKey(expense.expense_date));
     if (bucket) bucket.cost += numberValue(expense.total_amount);
   }
-  for (const trip of trips) {
+  for (const trip of scopedTrips) {
     if (trip.status !== "completed") continue;
     const bucket = monthMap.get(monthKey(trip.departure_at || trip.created_at));
     if (bucket) bucket.cost += numberValue(trip.total_cost);
@@ -251,20 +276,45 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
   const processStatusItems = PROCESS_STATUS_OPTIONS.map(([status, label]) => ({
     label,
-    value: processes.filter((process) => process.status === status).length,
+    value: scopedProcesses.filter((process) => process.status === status).length,
   }));
 
   const actionItems: ActionItem[] = [];
-  overdueEvents.slice(0, 4).forEach((event) => {
+  overdueDeadlines.slice(0, 4).forEach((event) => {
     const process = relatedProcess(event.processes);
     actionItems.push({
-      key: `event-${event.id}`,
-      title: "Compromisso vencido",
+      key: `deadline-${event.id}`,
+      title: "Prazo vencido",
       description: `${event.title}${process?.process_number ? ` · ${process.process_number}` : ""}`,
       href: `/agenda/${event.id}`,
       label: formatDateTime(event.starts_at),
       level: "danger",
-      weight: 1000 + Math.abs(daysFromNow(event.starts_at, now) || 0),
+      weight: 1200 + Math.abs(daysFromNow(event.starts_at, now) || 0),
+    });
+  });
+  overdueDiligences.slice(0, 2).forEach((event) => {
+    const process = relatedProcess(event.processes);
+    actionItems.push({
+      key: `diligence-overdue-${event.id}`,
+      title: "Diligência pendente",
+      description: `${event.title}${process?.process_number ? ` · ${process.process_number}` : ""}`,
+      href: `/agenda/${event.id}`,
+      label: formatDateTime(event.starts_at),
+      level: "danger",
+      weight: 1100 + Math.abs(daysFromNow(event.starts_at, now) || 0),
+    });
+  });
+  upcomingDeadlines.slice(0, 4).forEach((event) => {
+    const process = relatedProcess(event.processes);
+    const days = Math.max(daysFromNow(event.starts_at, now) ?? 0, 0);
+    actionItems.push({
+      key: `deadline-upcoming-${event.id}`,
+      title: days === 0 ? "Prazo vence hoje" : `Prazo vence em ${days} dia(s)`,
+      description: `${event.title}${process?.process_number ? ` · ${process.process_number}` : ""}`,
+      href: `/agenda/${event.id}`,
+      label: formatDateTime(event.starts_at),
+      level: days <= 1 ? "danger" : "warning",
+      weight: 1000 - days,
     });
   });
   reportDueSoon.forEach((process) => {
@@ -279,7 +329,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       weight: 900 - days,
     });
   });
-  financialRows
+  scopedFinancialRows
     .filter((row) => numberValue(row.approved_total) - numberValue(row.deposited_total) > 0 || numberValue(row.deposit_balance) > 0)
     .sort((a, b) => (numberValue(b.approved_total) - numberValue(b.received_total)) - (numberValue(a.approved_total) - numberValue(a.received_total)))
     .slice(0, 3)
@@ -310,10 +360,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   });
   const prioritizedActions = actionItems.sort((a, b) => b.weight - a.weight).slice(0, 8);
 
-  const topFinancialProcesses = [...financialRows]
+  const topFinancialProcesses = [...scopedFinancialRows]
     .filter((row) => numberValue(row.approved_total) > 0 || numberValue(row.forecast_result) !== 0)
     .sort((a, b) => numberValue(b.forecast_result) - numberValue(a.forecast_result))
     .slice(0, 5);
+
+  const processFilterOptions = [...processes].sort((a, b) => a.process_number.localeCompare(b.process_number, "pt-BR", { numeric: true }));
+  const processesHref = selectedProcessId ? `/processos/${selectedProcessId}` : "/processos";
+  const feesHref = selectedProcessId ? `/honorarios/${selectedProcessId}` : "/honorarios";
+  const expensesHref = selectedProcessId ? `/despesas/${selectedProcessId}` : "/despesas";
 
   return (
     <>
@@ -325,8 +380,23 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         </div>
         <div className="dashboard-header-tools">
           <form className="dashboard-period-form" method="get">
-            <label><span>Período dos indicadores</span><select className="select" name="period" defaultValue={selectedPeriod.key}>{DASHBOARD_PERIOD_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-            <button className="button button-secondary" type="submit">Atualizar</button>
+            <label>
+              <span>Período dos indicadores</span>
+              <select className="select" name="period" defaultValue={selectedPeriod.key}>
+                {DASHBOARD_PERIOD_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+            <label className="dashboard-process-filter">
+              <span>Processo</span>
+              <select className="select" name="process" defaultValue={selectedProcessId ?? ""}>
+                <option value="">Todos os processos</option>
+                {processFilterOptions.map((process) => (
+                  <option key={process.id} value={process.id}>{process.process_number}{process.subject ? ` — ${process.subject}` : ""}</option>
+                ))}
+              </select>
+            </label>
+            <button className="button button-secondary" type="submit">Aplicar filtros</button>
+            {(selectedProcessId || selectedPeriod.key !== "month") && <Link className="dashboard-filter-clear" href="/dashboard">Limpar filtros</Link>}
           </form>
           <div className="header-actions"><Link className="button button-secondary" href="/agenda/novo">+ Agendar</Link><Link className="button button-primary" href="/processos/novo">+ Nova perícia</Link></div>
         </div>
@@ -335,7 +405,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       {hasDataError && <div className="notice notice-error">Alguns indicadores não puderam ser carregados. Confirme se as migrações 007, 008 e 009 foram executadas integralmente.</div>}
 
       <section className="dashboard-period-summary">
-        <div><span>Indicadores do período</span><strong>{selectedPeriod.label}</strong></div>
+        <div>
+          <span>Escopo dos indicadores</span>
+          <strong>{selectedPeriod.label}</strong>
+          <small>{selectedProcess ? `${selectedProcess.process_number}${selectedProcess.subject ? ` · ${selectedProcess.subject}` : ""}` : "Todos os processos"}</small>
+        </div>
         <div><span>Proposto</span><strong>{formatCurrency(proposedInPeriod)}</strong></div>
         <div><span>Depositado</span><strong>{formatCurrency(depositedInPeriod)}</strong></div>
         <div><span>Resultado previsto</span><strong className={forecastResultInPeriod < 0 ? "metric-negative" : "metric-positive"}>{formatCurrency(forecastResultInPeriod)}</strong></div>
@@ -349,7 +423,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       </section>
 
       <section className="card panel dashboard-portfolio-card">
-        <div className="panel-header"><div><h2>Carteira financeira atual</h2><p>Posição acumulada de todos os processos.</p></div><Link href="/honorarios">Abrir honorários</Link></div>
+        <div className="panel-header"><div><h2>{selectedProcess ? "Posição financeira do processo" : "Carteira financeira atual"}</h2><p>{selectedProcess ? `Valores acumulados do processo ${selectedProcess.process_number}.` : "Posição acumulada de todos os processos."}</p></div><Link href={feesHref}>Abrir honorários</Link></div>
         <div className="dashboard-portfolio-grid">
           <div><span>Saldo depositado em juízo</span><strong>{formatCurrency(portfolioDepositBalance)}</strong><small>Aguardando levantamento</small></div>
           <div><span>Total ainda a receber</span><strong>{formatCurrency(portfolioReceivable)}</strong><small>Homologado menos levantado</small></div>
@@ -360,17 +434,18 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       </section>
 
       <section className="dashboard-operational-grid">
-        <Link className="card dashboard-operational-card" href="/processos"><span>Processos ativos</span><strong>{activeProcesses.length}</strong><small>{urgentProcesses.length} com prioridade alta/urgente</small></Link>
-        <Link className="card dashboard-operational-card" href="/laudos"><span>Laudos em produção</span><strong>{reportsInProgress.length}</strong><small>{reports.filter((report) => report.status === "in_review").length} em revisão</small></Link>
-        <Link className="card dashboard-operational-card" href="/agenda"><span>Próximos 7 dias</span><strong>{upcomingEvents.length}</strong><small>Compromissos ativos</small></Link>
-        <Link className="card dashboard-operational-card dashboard-operational-danger" href="/alertas"><span>Compromissos vencidos</span><strong>{overdueEvents.length}</strong><small>Exigem tratamento imediato</small></Link>
-        <Link className="card dashboard-operational-card" href="/honorarios"><span>Pendências financeiras</span><strong>{financialPending.length}</strong><small>Processos com fluxo incompleto</small></Link>
-        <Link className="card dashboard-operational-card" href="/processos"><span>Sem movimentação há 30 dias</span><strong>{staleProcesses.length}</strong><small>Revisar andamento e próximos atos</small></Link>
+        <Link className="card dashboard-operational-card" href={processesHref}><span>Processos ativos</span><strong>{activeProcesses.length}</strong><small>{urgentProcesses.length} com prioridade alta/urgente</small></Link>
+        <Link className="card dashboard-operational-card" href="/agenda"><span>Diligências ativas</span><strong>{activeDiligences.length}</strong><small>{upcomingDiligences.length} futuras · {overdueDiligences.length} vencidas</small></Link>
+        <Link className="card dashboard-operational-card" href="/laudos"><span>Laudos em andamento</span><strong>{reportsInProgress.length}</strong><small>{scopedReports.filter((report) => report.status === "in_review").length} em revisão</small></Link>
+        <Link className="card dashboard-operational-card" href="/agenda"><span>Prazos próximos</span><strong>{upcomingDeadlines.length}</strong><small>Vencimento nos próximos 7 dias</small></Link>
+        <Link className="card dashboard-operational-card dashboard-operational-danger" href="/alertas"><span>Prazos vencidos</span><strong>{overdueDeadlines.length}</strong><small>Exigem tratamento imediato</small></Link>
+        <Link className="card dashboard-operational-card" href={feesHref}><span>Pendências financeiras</span><strong>{financialPending.length}</strong><small>Processos com fluxo incompleto</small></Link>
+        <Link className="card dashboard-operational-card" href={processesHref}><span>Sem movimentação há 30 dias</span><strong>{staleProcesses.length}</strong><small>Revisar andamento e próximos atos</small></Link>
       </section>
 
       <section className="dashboard-grid dashboard-financial-grid">
         <article className="card panel">
-          <div className="panel-header"><div><h2>Funil financeiro da carteira</h2><p>Conversão entre proposta, homologação, depósito e levantamento.</p></div><Link href="/honorarios">Detalhar</Link></div>
+          <div className="panel-header"><div><h2>{selectedProcess ? "Funil financeiro do processo" : "Funil financeiro da carteira"}</h2><p>Conversão entre proposta, homologação, depósito e levantamento.</p></div><Link href={feesHref}>Detalhar</Link></div>
           <FinancialFunnel items={[
             { label: "Proposto", value: portfolioProposed, help: "Valores apresentados", tone: "blue" },
             { label: "Homologado", value: portfolioApproved, help: "Receita aprovada", tone: "purple" },
@@ -380,7 +455,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         </article>
 
         <article className="card panel">
-          <div className="panel-header"><div><h2>Distribuição dos processos</h2><p>Situação atual da carteira.</p></div><Link href="/processos">Ver processos</Link></div>
+          <div className="panel-header"><div><h2>Distribuição dos processos</h2><p>{selectedProcess ? "Situação do processo selecionado." : "Situação atual da carteira."}</p></div><Link href={processesHref}>Ver processos</Link></div>
           <StatusBars items={processStatusItems} />
         </article>
       </section>
@@ -392,7 +467,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         </article>
 
         <article className="card panel">
-          <div className="panel-header"><div><h2>Composição dos custos</h2><p>{selectedPeriod.label}</p></div><Link href="/despesas">Abrir despesas</Link></div>
+          <div className="panel-header"><div><h2>Composição dos custos</h2><p>{selectedPeriod.label}{selectedProcess ? ` · ${selectedProcess.process_number}` : ""}</p></div><Link href={expensesHref}>Abrir despesas</Link></div>
           <BreakdownBars items={expenseBreakdown} />
         </article>
       </section>
@@ -417,7 +492,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         </article>
 
         <article className="card panel">
-          <div className="panel-header"><div><h2>Próximos compromissos</h2><p>Agenda operacional dos próximos 7 dias.</p></div><Link href="/agenda">Abrir agenda</Link></div>
+          <div className="panel-header"><div><h2>Próximos compromissos</h2><p>Agenda operacional dos próximos 7 dias{selectedProcess ? ` para ${selectedProcess.process_number}` : ""}.</p></div><Link href="/agenda">Abrir agenda</Link></div>
           {!upcomingEvents.length ? (
             <div className="empty-state dashboard-compact-empty"><strong>Nenhum compromisso nos próximos 7 dias.</strong></div>
           ) : (
@@ -438,7 +513,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       </section>
 
       <section className="card panel dashboard-top-processes">
-        <div className="panel-header"><div><h2>Processos com maior resultado previsto</h2><p>Honorários homologados descontados dos custos previstos.</p></div><Link href="/despesas">Analisar custos</Link></div>
+        <div className="panel-header"><div><h2>{selectedProcess ? "Resultado previsto do processo" : "Processos com maior resultado previsto"}</h2><p>Honorários homologados descontados dos custos previstos.</p></div><Link href={expensesHref}>Analisar custos</Link></div>
         {!topFinancialProcesses.length ? (
           <div className="empty-state dashboard-compact-empty"><strong>Ainda não há valores homologados suficientes para comparação.</strong></div>
         ) : (
