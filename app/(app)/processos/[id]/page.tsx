@@ -3,11 +3,14 @@ import { notFound } from "next/navigation";
 import { SubmitButton } from "@/components/submit-button";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentOrganization } from "@/lib/current-organization";
+import { hasPermission } from "@/lib/permissions";
 import { completeDeadlineAction, createDeadlineAction } from "@/app/actions/deadlines";
+import { saveFeeCalculatorAction } from "@/app/actions/fees";
 import { deleteProcessAction, updateProcessStatusAction } from "@/app/actions/processes";
 import { deleteExpertReportAction } from "@/app/actions/reports";
 import { DeleteProcessButton } from "@/components/delete-process-button";
 import { DeleteReportButton } from "@/components/delete-report-button";
+import { FeeCalculator } from "@/components/fee-calculator";
 import {
   DEADLINE_CATEGORY_OPTIONS,
   deadlineCategoryLabel,
@@ -28,15 +31,28 @@ export default async function ProcessDetailPage({ params, searchParams }: { para
   const query = await searchParams;
   const organization = await getCurrentOrganization();
   if (!organization) return null;
+  const canViewFinance = hasPermission(organization.role, "finance:view");
+  const canWriteDocuments = hasPermission(organization.role, "documents:write");
+  const canWriteReports = hasPermission(organization.role, "reports:write");
+  const canWriteCalendar = hasPermission(organization.role, "calendar:write");
+  const canWriteProcess = hasPermission(organization.role, "processes:write");
   const supabase = await createClient();
 
-  const [{ data: process }, { data: deadlines }, { data: activities }, { data: documents }, { data: reports }, { data: financialSummary }] = await Promise.all([
+  const [{ data: process }, { data: deadlines }, { data: activities }, { data: documents }, { data: reports }, { data: financialSummary }, { data: primaryFee }, { data: calculatorExpense }] = await Promise.all([
     supabase.from("processes").select("*").eq("id", id).eq("organization_id", organization.id).maybeSingle(),
     supabase.from("process_deadlines").select("*").eq("process_id", id).eq("organization_id", organization.id).order("due_at", { ascending: true }),
     supabase.from("process_activities").select("id, activity_type, description, created_at").eq("process_id", id).eq("organization_id", organization.id).order("created_at", { ascending: false }).limit(12),
     supabase.from("generated_documents").select("id,title,status,version,updated_at").eq("process_id", id).eq("organization_id", organization.id).order("updated_at", { ascending: false }),
     supabase.from("expert_reports").select("id,title,status,current_version,updated_at").eq("process_id", id).eq("organization_id", organization.id).order("updated_at", { ascending: false }),
-    supabase.from("process_financial_summary").select("proposed_total,approved_total,deposited_total,deposit_balance,received_total,financial_status").eq("process_id", id).eq("organization_id", organization.id).maybeSingle(),
+    canViewFinance
+      ? supabase.from("process_financial_summary").select("proposed_total,approved_total,deposited_total,deposit_balance,received_total,expenses_forecast_total,trip_cost_forecast_total,operational_cost_forecast_total,forecast_result,financial_status").eq("process_id", id).eq("organization_id", organization.id).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    canViewFinance
+      ? supabase.from("process_fees").select("id,proposed_amount,advance_percentage,notes,metadata,updated_at").eq("process_id", id).eq("organization_id", organization.id).eq("is_primary", true).neq("status", "cancelled").order("updated_at", { ascending: false }).limit(1).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    canViewFinance
+      ? supabase.from("process_expenses").select("id,total_amount,metadata,updated_at").eq("process_id", id).eq("organization_id", organization.id).contains("metadata", { source: "fee_calculator" }).order("updated_at", { ascending: false }).limit(1).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ]);
   if (!process) notFound();
 
@@ -62,23 +78,38 @@ export default async function ProcessDetailPage({ params, searchParams }: { para
   const statusAction = updateProcessStatusAction.bind(null, id);
   const deadlineAction = createDeadlineAction.bind(null, id);
   const deleteProcess = deleteProcessAction.bind(null, id);
+  const calculatorAction = saveFeeCalculatorAction.bind(null, id, primaryFee?.id || null, calculatorExpense?.id || null);
   const canDelete = ["owner", "admin"].includes(organization.role);
+  const calculatorMetadata = ((primaryFee?.metadata as any)?.calculator || (calculatorExpense?.metadata as any)?.calculator || null) as Record<string, any> | null;
 
   return (
     <>
       <header className="page-header">
         <div><p className="eyebrow">PROCESSO PERICIAL</p><h1>{process.process_number}</h1><p>{process.subject || "Objeto ainda não informado"}</p></div>
-        <div className="header-actions"><Link className="button button-secondary" href="/processos">Voltar</Link><Link className="button button-secondary" href={`/documentos/novo?process=${id}`}>Gerar petição</Link><Link className="button button-secondary" href={`/laudos/novo?process=${id}`}>Criar laudo</Link><Link className="button button-secondary" href={`/honorarios/${id}`}>Honorários</Link><Link className="button button-secondary" href={`/despesas/${id}`}>Despesas</Link><Link className="button button-secondary" href={`/agenda/novo?process=${id}`}>Agendar</Link><Link className="button button-primary" href={`/processos/${id}/editar`}>Editar processo</Link>{canDelete && <DeleteProcessButton action={deleteProcess} processNumber={process.process_number} />}</div>
+        <div className="header-actions"><Link className="button button-secondary" href="/processos">Voltar</Link>{canWriteDocuments && <Link className="button button-secondary" href={`/documentos/novo?process=${id}`}>Gerar petição</Link>}{canWriteReports && <Link className="button button-secondary" href={`/laudos/novo?process=${id}`}>Criar laudo</Link>}{canViewFinance && <Link className="button button-secondary" href={`/honorarios/${id}`}>Honorários</Link>}{canViewFinance && <Link className="button button-secondary" href={`/despesas/${id}`}>Despesas</Link>}{canWriteCalendar && <Link className="button button-secondary" href={`/agenda/novo?process=${id}`}>Agendar</Link>}{canWriteProcess && <Link className="button button-primary" href={`/processos/${id}/editar`}>Editar processo</Link>}{canDelete && <DeleteProcessButton action={deleteProcess} processNumber={process.process_number} />}</div>
       </header>
 
       {query.error && <div className="notice notice-error">{query.error}</div>}
       {query.success && <div className="notice notice-success">{query.success}</div>}
 
-      <section className="card process-summary-card">
+      <section className={`card process-summary-card ${canViewFinance ? "process-finance-summary-card" : ""}`}>
         <div><span>Status atual</span><strong>{processStatusLabel(process.status)}</strong></div>
-        <div><span>Honorários homologados</span><strong>{formatCurrency(financialSummary?.approved_total ?? process.fee_arbitrated)}</strong></div>
-        <div><span>Depositado</span><strong>{formatCurrency(financialSummary?.deposited_total ?? process.fee_deposited)}</strong></div>
-        <div><span>Recebido</span><strong>{formatCurrency(financialSummary?.received_total ?? process.fee_received)}</strong></div>
+        {canViewFinance ? (
+          <>
+            <div><span>Honorários homologados</span><strong>{formatCurrency(financialSummary?.approved_total ?? process.fee_arbitrated)}</strong></div>
+            <div><span>Honorários propostos</span><strong>{formatCurrency(financialSummary?.proposed_total ?? process.fee_proposed)}</strong></div>
+            <div><span>Custo previsto</span><strong>{formatCurrency(financialSummary?.operational_cost_forecast_total ?? ((financialSummary?.expenses_forecast_total ?? 0) + (financialSummary?.trip_cost_forecast_total ?? 0)))}</strong></div>
+            <div><span>Resultado previsto</span><strong>{formatCurrency(financialSummary?.forecast_result ?? 0)}</strong></div>
+            <div><span>Depositado</span><strong>{formatCurrency(financialSummary?.deposited_total ?? process.fee_deposited)}</strong></div>
+            <div><span>Recebido</span><strong>{formatCurrency(financialSummary?.received_total ?? process.fee_received)}</strong></div>
+          </>
+        ) : (
+          <>
+            <div><span>Prioridade</span><strong>{priorityLabel(process.priority)}</strong></div>
+            <div><span>Prazo do laudo</span><strong>{formatDate(process.report_due_at)}</strong></div>
+            <div><span>Responsável</span><strong>{process.responsible_name || "Não informado"}</strong></div>
+          </>
+        )}
       </section>
 
       <section className="dashboard-grid process-main-grid">
@@ -110,6 +141,30 @@ export default async function ProcessDetailPage({ params, searchParams }: { para
           </article>
         </aside>
       </section>
+
+      {canViewFinance && (
+        <FeeCalculator
+          action={calculatorAction}
+          processInfo={{
+            processNumber: process.process_number,
+            court: process.court || "",
+            district: process.district || "",
+            division: process.division || "",
+            caseClass: process.case_class || "",
+            subject: process.subject || "",
+            appointedAt: formatDate(process.appointed_at),
+            reportDueAt: formatDate(process.report_due_at),
+            expertiseArea: process.expertise_area || "",
+          }}
+          summary={{
+            proposedTotal: Number(financialSummary?.proposed_total ?? process.fee_proposed ?? 0),
+            approvedTotal: Number(financialSummary?.approved_total ?? process.fee_arbitrated ?? 0),
+            operationalCost: Number(financialSummary?.operational_cost_forecast_total ?? ((financialSummary?.expenses_forecast_total ?? 0) + (financialSummary?.trip_cost_forecast_total ?? 0))),
+            forecastResult: Number(financialSummary?.forecast_result ?? 0),
+          }}
+          initial={calculatorMetadata ? { calculator: calculatorMetadata, memoryText: calculatorMetadata.memory_text || primaryFee?.notes || "" } : null}
+        />
+      )}
 
       <section className="dashboard-grid">
         <article className="card panel">
