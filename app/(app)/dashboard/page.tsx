@@ -3,62 +3,19 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentOrganization } from "@/lib/current-organization";
 import { hasPermission } from "@/lib/permissions";
 import { eventTypeIcon, eventTypeLabel } from "@/lib/calendar-options";
-import { expenseCategoryLabel } from "@/lib/expense-options";
-import { formatCurrency, formatDate, formatDateTime, PROCESS_STATUS_OPTIONS } from "@/lib/process-options";
-import {
-  DASHBOARD_PERIOD_OPTIONS,
-  dashboardPeriod,
-  dateInPeriod,
-  daysFromNow,
-  lastMonthBuckets,
-  monthKey,
-  numberValue,
-} from "@/lib/dashboard-options";
-import { BreakdownBars, FinancialFunnel, MonthlyCashChart, StatusBars } from "@/components/dashboard-charts";
+import { formatDate, formatDateTime, PROCESS_STATUS_OPTIONS, priorityLabel, processStatusLabel } from "@/lib/process-options";
 
-export const metadata = { title: "Painel financeiro e operacional" };
+export const metadata = { title: "Painel operacional" };
 
 type ProcessRow = {
   id: string;
   process_number: string;
   subject: string | null;
-  plaintiff: string | null;
-  defendant: string | null;
   status: string;
   priority: string;
   report_due_at: string | null;
-  financial_status: string | null;
   last_movement_at: string | null;
   created_at: string;
-};
-
-type FinancialRow = {
-  process_id: string;
-  process_number: string;
-  subject: string | null;
-  process_status: string;
-  financial_status: string;
-  proposed_total: number | string | null;
-  approved_total: number | string | null;
-  deposited_total: number | string | null;
-  deposit_balance: number | string | null;
-  received_total: number | string | null;
-  expenses_forecast_total: number | string | null;
-  expenses_paid_total: number | string | null;
-  reimbursable_pending_total: number | string | null;
-  trip_cost_forecast_total: number | string | null;
-  trip_cost_completed_total: number | string | null;
-  forecast_result: number | string | null;
-  realized_cash_result: number | string | null;
-  last_movement_at: string | null;
-};
-
-type ReportRow = {
-  id: string;
-  process_id: string;
-  title: string;
-  status: string;
-  updated_at: string;
 };
 
 type RelatedProcess = { id?: string; process_number?: string | null } | null;
@@ -76,498 +33,290 @@ type EventRow = {
   processes: RelatedProcess | RelatedProcess[];
 };
 
-type FeeRow = {
+type ReportRow = {
+  id: string;
   process_id: string;
-  proposed_amount: number | string | null;
-  approved_amount: number | string | null;
-  proposed_at: string | null;
-  approved_at: string | null;
-  status: string;
-};
-
-type TransactionRow = {
-  process_id: string;
-  transaction_type: string;
-  deposit_delta: number | string | null;
-  received_delta: number | string | null;
-  occurred_at: string | null;
-  created_at: string;
-};
-
-type ExpenseRow = {
-  process_id: string;
-  category: string;
-  total_amount: number | string | null;
-  payment_status: string;
-  expense_date: string;
-  is_reimbursable: boolean;
-  reimbursement_status: string;
-};
-
-type TripRow = {
-  process_id: string;
-  status: string;
-  total_cost: number | string | null;
-  departure_at: string | null;
-  created_at: string;
-};
-
-type ActionItem = {
-  key: string;
   title: string;
-  description: string;
-  href: string;
-  label: string;
-  level: "danger" | "warning" | "info" | "success";
-  weight: number;
+  status: string;
+  updated_at: string;
 };
+
+const completedStatuses = new Set(["delivered", "closed"]);
+const reportWorkStatuses = new Set(["drafting", "clarifications"]);
+const planningStatuses = new Set(["appointment_received", "analysis", "fees_proposed", "awaiting_decision", "awaiting_deposit"]);
+const diligenceTypes = new Set(["diligence", "inspection"]);
 
 function relatedProcess(value: EventRow["processes"]) {
   return Array.isArray(value) ? value[0] ?? null : value;
 }
 
-function sum<T>(rows: T[], value: (row: T) => number) {
-  return rows.reduce((total, row) => total + value(row), 0);
-}
-
-function daysSince(value: string | null | undefined, reference: Date) {
-  if (!value) return 9999;
+function daysFromNow(value: string | null | undefined, reference: Date) {
+  if (!value) return null;
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 9999;
-  return Math.floor((reference.getTime() - date.getTime()) / 86400000);
+  if (Number.isNaN(date.getTime())) return null;
+  return Math.ceil((date.getTime() - reference.getTime()) / 86400000);
 }
 
-export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ period?: string; process?: string }> }) {
-  const query = await searchParams;
+function sortByRecentMovement(a: ProcessRow, b: ProcessRow) {
+  const aDate = new Date(a.last_movement_at || a.created_at).getTime();
+  const bDate = new Date(b.last_movement_at || b.created_at).getTime();
+  return bDate - aDate;
+}
+
+export default async function DashboardPage() {
   const organization = await getCurrentOrganization();
   if (!organization) return null;
 
   const supabase = await createClient();
   const canViewFinance = hasPermission(organization.role, "finance:view");
   const now = new Date();
-  const selectedPeriod = dashboardPeriod(query.period, now);
   const nextSeven = new Date(now.getTime() + 7 * 86400000);
 
-  const [
-    dashboardResult,
-    financialRowsResult,
-    processesResult,
-    reportsResult,
-    eventsResult,
-    feesResult,
-    transactionsResult,
-    expensesResult,
-    tripsResult,
-  ] = await Promise.all([
-    canViewFinance
-      ? supabase.from("organization_financial_dashboard").select("*").eq("organization_id", organization.id).maybeSingle()
-      : Promise.resolve({ data: null, error: null }),
-    canViewFinance
-      ? supabase.from("process_financial_summary").select("*").eq("organization_id", organization.id).order("forecast_result", { ascending: false })
-      : Promise.resolve({ data: [], error: null }),
-    supabase.from("processes").select("id,process_number,subject,plaintiff,defendant,status,priority,report_due_at,financial_status,last_movement_at,created_at").eq("organization_id", organization.id).order("last_movement_at", { ascending: false }),
-    supabase.from("expert_reports").select("id,process_id,title,status,updated_at").eq("organization_id", organization.id).order("updated_at", { ascending: false }),
-    supabase.from("calendar_events").select("id,process_id,title,event_type,status,priority,starts_at,location_name,city,processes(id,process_number)").eq("organization_id", organization.id).not("status", "in", "(completed,cancelled)").order("starts_at", { ascending: true }),
-    canViewFinance
-      ? supabase.from("process_fees").select("process_id,proposed_amount,approved_amount,proposed_at,approved_at,status").eq("organization_id", organization.id).neq("status", "cancelled")
-      : Promise.resolve({ data: [], error: null }),
-    canViewFinance
-      ? supabase.from("fee_transactions").select("process_id,transaction_type,deposit_delta,received_delta,occurred_at,created_at").eq("organization_id", organization.id).eq("status", "confirmed")
-      : Promise.resolve({ data: [], error: null }),
-    canViewFinance
-      ? supabase.from("process_expenses").select("process_id,category,total_amount,payment_status,expense_date,is_reimbursable,reimbursement_status").eq("organization_id", organization.id).neq("payment_status", "cancelled")
-      : Promise.resolve({ data: [], error: null }),
-    canViewFinance
-      ? supabase.from("process_trips").select("process_id,status,total_cost,departure_at,created_at").eq("organization_id", organization.id).neq("status", "cancelled")
-      : Promise.resolve({ data: [], error: null }),
+  const [processesResult, reportsResult, eventsResult] = await Promise.all([
+    supabase
+      .from("processes")
+      .select("id,process_number,subject,status,priority,report_due_at,last_movement_at,created_at")
+      .eq("organization_id", organization.id)
+      .order("last_movement_at", { ascending: false }),
+    supabase
+      .from("expert_reports")
+      .select("id,process_id,title,status,updated_at")
+      .eq("organization_id", organization.id)
+      .order("updated_at", { ascending: false }),
+    supabase
+      .from("calendar_events")
+      .select("id,process_id,title,event_type,status,priority,starts_at,location_name,city,processes(id,process_number)")
+      .eq("organization_id", organization.id)
+      .order("starts_at", { ascending: true }),
   ]);
 
-  const financialRows = (financialRowsResult.data ?? []) as FinancialRow[];
   const processes = (processesResult.data ?? []) as ProcessRow[];
   const reports = (reportsResult.data ?? []) as ReportRow[];
   const events = (eventsResult.data ?? []) as EventRow[];
-  const fees = (feesResult.data ?? []) as FeeRow[];
-  const transactions = (transactionsResult.data ?? []) as TransactionRow[];
-  const expenses = (expensesResult.data ?? []) as ExpenseRow[];
-  const trips = (tripsResult.data ?? []) as TripRow[];
+  const hasDataError = Boolean(processesResult.error || reportsResult.error || eventsResult.error);
 
-  const hasDataError = [dashboardResult.error, financialRowsResult.error, processesResult.error, reportsResult.error, eventsResult.error, feesResult.error, transactionsResult.error, expensesResult.error, tripsResult.error].some(Boolean);
-
-  const selectedProcessId = processes.some((process) => process.id === query.process) ? query.process ?? null : null;
-  const selectedProcess = selectedProcessId ? processes.find((process) => process.id === selectedProcessId) ?? null : null;
-  const processMatches = (processId: string | null | undefined) => !selectedProcessId || processId === selectedProcessId;
-
-  const scopedProcesses = selectedProcessId ? processes.filter((process) => process.id === selectedProcessId) : processes;
-  const scopedFinancialRows = financialRows.filter((row) => processMatches(row.process_id));
-  const scopedReports = reports.filter((report) => processMatches(report.process_id));
-  const scopedEvents = events.filter((event) => processMatches(event.process_id));
-  const scopedFees = fees.filter((fee) => processMatches(fee.process_id));
-  const scopedTransactions = transactions.filter((transaction) => processMatches(transaction.process_id));
-  const scopedExpenses = expenses.filter((expense) => processMatches(expense.process_id));
-  const scopedTrips = trips.filter((trip) => processMatches(trip.process_id));
-
-  const proposedInPeriod = sum(scopedFees.filter((fee) => dateInPeriod(fee.proposed_at, selectedPeriod.start, selectedPeriod.end)), (fee) => numberValue(fee.proposed_amount));
-  const approvedInPeriod = sum(scopedFees.filter((fee) => dateInPeriod(fee.approved_at, selectedPeriod.start, selectedPeriod.end)), (fee) => numberValue(fee.approved_amount));
-  const transactionsInPeriod = scopedTransactions.filter((transaction) => dateInPeriod(transaction.occurred_at || transaction.created_at, selectedPeriod.start, selectedPeriod.end));
-  const depositedInPeriod = sum(transactionsInPeriod, (transaction) => Math.max(numberValue(transaction.deposit_delta), 0));
-  const receivedInPeriod = sum(transactionsInPeriod, (transaction) => numberValue(transaction.received_delta));
-  const expensesInPeriod = scopedExpenses.filter((expense) => dateInPeriod(expense.expense_date, selectedPeriod.start, selectedPeriod.end));
-  const tripsInPeriod = scopedTrips.filter((trip) => dateInPeriod(trip.departure_at || trip.created_at, selectedPeriod.start, selectedPeriod.end));
-  const expensesPaidInPeriod = sum(expensesInPeriod.filter((expense) => expense.payment_status === "paid"), (expense) => numberValue(expense.total_amount));
-  const tripsCompletedInPeriod = sum(tripsInPeriod.filter((trip) => trip.status === "completed"), (trip) => numberValue(trip.total_cost));
-  const forecastExpensesInPeriod = sum(expensesInPeriod, (expense) => numberValue(expense.total_amount));
-  const forecastTripsInPeriod = sum(tripsInPeriod, (trip) => numberValue(trip.total_cost));
-  const realizedCostsInPeriod = expensesPaidInPeriod + tripsCompletedInPeriod;
-  const forecastCostsInPeriod = forecastExpensesInPeriod + forecastTripsInPeriod;
-  const cashResultInPeriod = receivedInPeriod - realizedCostsInPeriod;
-  const forecastResultInPeriod = approvedInPeriod - forecastCostsInPeriod;
-
-  const activeProcesses = scopedProcesses.filter((process) => process.status !== "closed");
-  const reportsInProgress = scopedReports.filter((report) => ["draft", "in_review"].includes(report.status));
-  const activeEvents = scopedEvents.filter((event) => !["completed", "cancelled"].includes(event.status));
-  const upcomingEvents = activeEvents.filter((event) => {
-    const starts = new Date(event.starts_at);
-    return starts >= now && starts <= nextSeven;
-  });
-  const deadlineTypes = new Set(["report_due", "clarification_due", "manifestation_due", "financial_due"]);
-  const diligenceTypes = new Set(["diligence", "inspection"]);
-  const deadlineEvents = activeEvents.filter((event) => deadlineTypes.has(event.event_type));
-  const upcomingDeadlines = deadlineEvents.filter((event) => {
-    const starts = new Date(event.starts_at);
-    return starts >= now && starts <= nextSeven;
-  });
-  const overdueDeadlines = deadlineEvents.filter((event) => new Date(event.starts_at) < now);
-  const activeDiligences = activeEvents.filter((event) => diligenceTypes.has(event.event_type));
-  const upcomingDiligences = activeDiligences.filter((event) => new Date(event.starts_at) >= now);
-  const overdueDiligences = activeDiligences.filter((event) => new Date(event.starts_at) < now);
-  const financialPending = scopedFinancialRows.filter((row) => !["fully_released", "cancelled", "not_defined"].includes(row.financial_status));
-  const staleProcesses = activeProcesses.filter((process) => daysSince(process.last_movement_at || process.created_at, now) >= 30);
+  const completedProcesses = processes.filter((process) => completedStatuses.has(process.status)).sort(sortByRecentMovement);
+  const activeProcesses = processes.filter((process) => !completedStatuses.has(process.status));
+  const planningProcesses = activeProcesses.filter((process) => planningStatuses.has(process.status));
+  const scheduledProcesses = activeProcesses.filter((process) => process.status === "scheduled");
+  const reportWorkProcesses = activeProcesses.filter((process) => reportWorkStatuses.has(process.status));
   const urgentProcesses = activeProcesses.filter((process) => ["high", "urgent"].includes(process.priority));
+  const reportsInProgress = reports.filter((report) => ["draft", "in_review"].includes(report.status));
+  const reportWorkProcessIds = new Set([
+    ...reportWorkProcesses.map((process) => process.id),
+    ...reportsInProgress.map((report) => report.process_id),
+  ]);
 
-  const scheduledReportProcessIds = new Set(deadlineEvents.filter((event) => event.event_type === "report_due" && event.process_id).map((event) => event.process_id as string));
+  const activeEvents = events.filter((event) => !["completed", "cancelled"].includes(event.status));
+  const activeDiligences = activeEvents.filter((event) => diligenceTypes.has(event.event_type));
+  const upcomingDiligences = activeDiligences.filter((event) => {
+    const starts = new Date(event.starts_at);
+    return starts >= now;
+  });
+  const weekDiligences = upcomingDiligences.filter((event) => new Date(event.starts_at) <= nextSeven);
+  const overdueDiligences = activeDiligences.filter((event) => new Date(event.starts_at) < now);
+
   const reportDueSoon = activeProcesses.filter((process) => {
     const days = daysFromNow(process.report_due_at, now);
-    return days !== null && days >= 0 && days <= 7 && !["delivered", "closed"].includes(process.status) && !scheduledReportProcessIds.has(process.id);
+    return days !== null && days >= 0 && days <= 7;
+  });
+  const reportOverdue = activeProcesses.filter((process) => {
+    const days = daysFromNow(process.report_due_at, now);
+    return days !== null && days < 0;
   });
 
-  const portfolioApproved = sum(scopedFinancialRows, (row) => numberValue(row.approved_total));
-  const portfolioProposed = sum(scopedFinancialRows, (row) => numberValue(row.proposed_total));
-  const portfolioDeposited = sum(scopedFinancialRows, (row) => numberValue(row.deposited_total));
-  const portfolioReceived = sum(scopedFinancialRows, (row) => numberValue(row.received_total));
-  const portfolioDepositBalance = sum(scopedFinancialRows, (row) => numberValue(row.deposit_balance));
-  const portfolioForecastResult = sum(scopedFinancialRows, (row) => numberValue(row.forecast_result));
-  const portfolioReimbursements = sum(scopedFinancialRows, (row) => numberValue(row.reimbursable_pending_total));
-  const portfolioReceivable = Math.max(portfolioApproved - portfolioReceived, 0);
-  const portfolioCosts = sum(scopedFinancialRows, (row) => numberValue(row.expenses_forecast_total) + numberValue(row.trip_cost_forecast_total));
-
-  const monthBuckets = lastMonthBuckets(6, now);
-  const monthMap = new Map(monthBuckets.map((bucket) => [bucket.key, bucket]));
-  for (const transaction of scopedTransactions) {
-    const key = monthKey(transaction.occurred_at || transaction.created_at);
-    const bucket = monthMap.get(key);
-    if (bucket) bucket.revenue += numberValue(transaction.received_delta);
-  }
-  for (const expense of scopedExpenses) {
-    if (expense.payment_status !== "paid") continue;
-    const bucket = monthMap.get(monthKey(expense.expense_date));
-    if (bucket) bucket.cost += numberValue(expense.total_amount);
-  }
-  for (const trip of scopedTrips) {
-    if (trip.status !== "completed") continue;
-    const bucket = monthMap.get(monthKey(trip.departure_at || trip.created_at));
-    if (bucket) bucket.cost += numberValue(trip.total_cost);
-  }
-
-  const expenseCategoryMap = new Map<string, number>();
-  for (const expense of expensesInPeriod) {
-    expenseCategoryMap.set(expense.category, (expenseCategoryMap.get(expense.category) || 0) + numberValue(expense.total_amount));
-  }
-  if (forecastTripsInPeriod > 0) expenseCategoryMap.set("__trips", forecastTripsInPeriod);
-  const expenseBreakdown = [...expenseCategoryMap.entries()]
-    .map(([category, value]) => ({ label: category === "__trips" ? "Deslocamentos calculados" : expenseCategoryLabel(category), value }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 7);
-
-  const processStatusItems = PROCESS_STATUS_OPTIONS.map(([status, label]) => ({
+  const completionRate = processes.length ? Math.round((completedProcesses.length / processes.length) * 100) : 0;
+  const statusItems = PROCESS_STATUS_OPTIONS.map(([status, label]) => ({
+    status,
     label,
-    value: scopedProcesses.filter((process) => process.status === status).length,
-  }));
+    value: processes.filter((process) => process.status === status).length,
+  })).filter((item) => item.value > 0);
 
-  const actionItems: ActionItem[] = [];
-  overdueDeadlines.slice(0, 4).forEach((event) => {
-    const process = relatedProcess(event.processes);
-    actionItems.push({
-      key: `deadline-${event.id}`,
-      title: "Prazo vencido",
-      description: `${event.title}${process?.process_number ? ` · ${process.process_number}` : ""}`,
-      href: `/agenda/${event.id}`,
-      label: formatDateTime(event.starts_at),
-      level: "danger",
-      weight: 1200 + Math.abs(daysFromNow(event.starts_at, now) || 0),
-    });
+  const nextProcesses = [...activeProcesses].sort((a, b) => {
+    const aDue = a.report_due_at ? new Date(a.report_due_at).getTime() : Number.MAX_SAFE_INTEGER;
+    const bDue = b.report_due_at ? new Date(b.report_due_at).getTime() : Number.MAX_SAFE_INTEGER;
+    if (aDue !== bDue) return aDue - bDue;
+    return sortByRecentMovement(a, b);
   });
-  overdueDiligences.slice(0, 2).forEach((event) => {
-    const process = relatedProcess(event.processes);
-    actionItems.push({
-      key: `diligence-overdue-${event.id}`,
-      title: "Diligência pendente",
-      description: `${event.title}${process?.process_number ? ` · ${process.process_number}` : ""}`,
-      href: `/agenda/${event.id}`,
-      label: formatDateTime(event.starts_at),
-      level: "danger",
-      weight: 1100 + Math.abs(daysFromNow(event.starts_at, now) || 0),
-    });
-  });
-  upcomingDeadlines.slice(0, 4).forEach((event) => {
-    const process = relatedProcess(event.processes);
-    const days = Math.max(daysFromNow(event.starts_at, now) ?? 0, 0);
-    actionItems.push({
-      key: `deadline-upcoming-${event.id}`,
-      title: days === 0 ? "Prazo vence hoje" : `Prazo vence em ${days} dia(s)`,
-      description: `${event.title}${process?.process_number ? ` · ${process.process_number}` : ""}`,
-      href: `/agenda/${event.id}`,
-      label: formatDateTime(event.starts_at),
-      level: days <= 1 ? "danger" : "warning",
-      weight: 1000 - days,
-    });
-  });
-  reportDueSoon.forEach((process) => {
-    const days = daysFromNow(process.report_due_at, now) ?? 7;
-    actionItems.push({
-      key: `report-${process.id}`,
-      title: days === 0 ? "Laudo vence hoje" : `Laudo vence em ${days} dia(s)`,
-      description: `${process.process_number} · ${process.subject || "Objeto não informado"}`,
-      href: `/processos/${process.id}`,
-      label: formatDate(process.report_due_at),
-      level: days <= 1 ? "danger" : "warning",
-      weight: 900 - days,
-    });
-  });
-  scopedFinancialRows
-    .filter((row) => numberValue(row.approved_total) - numberValue(row.deposited_total) > 0 || numberValue(row.deposit_balance) > 0)
-    .sort((a, b) => (numberValue(b.approved_total) - numberValue(b.received_total)) - (numberValue(a.approved_total) - numberValue(a.received_total)))
-    .slice(0, 3)
-    .forEach((row) => {
-      const waitingDeposit = Math.max(numberValue(row.approved_total) - numberValue(row.deposited_total), 0);
-      const depositBalance = numberValue(row.deposit_balance);
-      actionItems.push({
-        key: `finance-${row.process_id}`,
-        title: waitingDeposit > 0 ? "Honorários aguardando depósito" : "Saldo aguardando levantamento",
-        description: `${row.process_number} · ${row.subject || "Objeto não informado"}`,
-        href: `/honorarios/${row.process_id}`,
-        label: formatCurrency(waitingDeposit > 0 ? waitingDeposit : depositBalance),
-        level: waitingDeposit > 0 ? "warning" : "info",
-        weight: 700 + Math.min((waitingDeposit + depositBalance) / 1000, 100),
-      });
-    });
-  staleProcesses.slice(0, 3).forEach((process) => {
-    const inactiveDays = daysSince(process.last_movement_at || process.created_at, now);
-    actionItems.push({
-      key: `stale-${process.id}`,
-      title: "Processo sem movimentação recente",
-      description: `${process.process_number} · ${process.subject || "Objeto não informado"}`,
-      href: `/processos/${process.id}`,
-      label: `${inactiveDays} dias`,
-      level: "info",
-      weight: 400 + inactiveDays,
-    });
-  });
-  const prioritizedActions = actionItems.sort((a, b) => b.weight - a.weight).slice(0, 8);
-
-  const topFinancialProcesses = [...scopedFinancialRows]
-    .filter((row) => numberValue(row.approved_total) > 0 || numberValue(row.forecast_result) !== 0)
-    .sort((a, b) => numberValue(b.forecast_result) - numberValue(a.forecast_result))
-    .slice(0, 5);
-
-  const processFilterOptions = [...processes].sort((a, b) => a.process_number.localeCompare(b.process_number, "pt-BR", { numeric: true }));
-  const processesHref = selectedProcessId ? `/processos/${selectedProcessId}` : "/processos";
-  const feesHref = selectedProcessId ? `/honorarios/${selectedProcessId}` : "/honorarios";
-  const expensesHref = selectedProcessId ? `/despesas/${selectedProcessId}` : "/despesas";
 
   return (
     <>
-      <header className="page-header dashboard-page-header">
+      <header className="page-header home-dashboard-header">
         <div>
-          <p className="eyebrow">PAINEL EXECUTIVO</p>
-          <h1>{canViewFinance ? "Financeiro e operacional" : "Operacional"}</h1>
-          <p>{canViewFinance ? "Receitas, custos, prazos, laudos e pendências consolidados para decisão rápida." : "Processos, prazos, diligências e laudos consolidados para acompanhamento da rotina."}</p>
+          <p className="eyebrow">PAINEL OPERACIONAL</p>
+          <h1>Pericias realizadas e a realizar</h1>
+          <p>Visao inicial simples para acompanhar a carteira, proximas diligencias e laudos em andamento.</p>
         </div>
-        <div className="dashboard-header-tools">
-          <form className="dashboard-period-form" method="get">
-            <label>
-              <span>Período dos indicadores</span>
-              <select className="select" name="period" defaultValue={selectedPeriod.key}>
-                {DASHBOARD_PERIOD_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-            </label>
-            <label className="dashboard-process-filter">
-              <span>Processo</span>
-              <select className="select" name="process" defaultValue={selectedProcessId ?? ""}>
-                <option value="">Todos os processos</option>
-                {processFilterOptions.map((process) => (
-                  <option key={process.id} value={process.id}>{process.process_number}{process.subject ? ` — ${process.subject}` : ""}</option>
-                ))}
-              </select>
-            </label>
-            <button className="button button-secondary" type="submit">Aplicar filtros</button>
-            {(selectedProcessId || selectedPeriod.key !== "month") && <Link className="dashboard-filter-clear" href="/dashboard">Limpar filtros</Link>}
-          </form>
-          <div className="header-actions"><Link className="button button-secondary" href="/agenda/novo">+ Agendar</Link><Link className="button button-primary" href="/processos/novo">+ Nova perícia</Link></div>
+        <div className="header-actions">
+          {canViewFinance && <Link className="button button-secondary" href="/financeiro">Financeiro</Link>}
+          <Link className="button button-secondary" href="/agenda/novo">+ Agendar</Link>
+          <Link className="button button-primary" href="/processos/novo">+ Nova pericia</Link>
         </div>
       </header>
 
-      {hasDataError && <div className="notice notice-error">Alguns indicadores não puderam ser carregados. Confirme se as migrações 007, 008 e 009 foram executadas integralmente.</div>}
+      {hasDataError && <div className="notice notice-error">Alguns indicadores nao puderam ser carregados. Confira as migracoes do Supabase.</div>}
 
-      <section className="dashboard-period-summary">
-        <div>
-          <span>Escopo dos indicadores</span>
-          <strong>{selectedPeriod.label}</strong>
-          <small>{selectedProcess ? `${selectedProcess.process_number}${selectedProcess.subject ? ` · ${selectedProcess.subject}` : ""}` : "Todos os processos"}</small>
-        </div>
-        {canViewFinance ? (
-          <>
-            <div><span>Proposto</span><strong>{formatCurrency(proposedInPeriod)}</strong></div>
-            <div><span>Depositado</span><strong>{formatCurrency(depositedInPeriod)}</strong></div>
-            <div><span>Resultado previsto</span><strong className={forecastResultInPeriod < 0 ? "metric-negative" : "metric-positive"}>{formatCurrency(forecastResultInPeriod)}</strong></div>
-          </>
-        ) : (
-          <>
-            <div><span>Processos ativos</span><strong>{activeProcesses.length}</strong></div>
-            <div><span>Laudos em andamento</span><strong>{reportsInProgress.length}</strong></div>
-            <div><span>Prazos próximos</span><strong>{upcomingDeadlines.length}</strong></div>
-          </>
-        )}
+      <section className="stats-grid home-stats-grid">
+        <Link className="card stat-card home-stat-card" href="/processos">
+          <span>Pericias realizadas</span>
+          <strong>{completedProcesses.length}</strong>
+          <small>{completionRate}% da carteira cadastrada</small>
+        </Link>
+        <Link className="card stat-card home-stat-card" href="/processos">
+          <span>Pericias a realizar</span>
+          <strong>{activeProcesses.length}</strong>
+          <small>{planningProcesses.length} em preparacao inicial</small>
+        </Link>
+        <Link className="card stat-card home-stat-card" href="/agenda">
+          <span>Diligencias agendadas</span>
+          <strong>{upcomingDiligences.length}</strong>
+          <small>{weekDiligences.length} nos proximos 7 dias</small>
+        </Link>
+        <Link className="card stat-card home-stat-card" href="/laudos">
+          <span>Laudos em elaboracao</span>
+          <strong>{reportWorkProcessIds.size}</strong>
+          <small>{reportDueSoon.length} com vencimento proximo</small>
+        </Link>
       </section>
 
-      {canViewFinance && (
-      <section className="stats-grid dashboard-primary-stats">
-        <article className="card stat-card dashboard-metric-card"><span>Homologado no período</span><strong>{formatCurrency(approvedInPeriod)}</strong><small>{portfolioApproved > 0 ? `${((approvedInPeriod / portfolioApproved) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% da carteira homologada` : "Sem carteira homologada"}</small></article>
-        <article className="card stat-card dashboard-metric-card"><span>Levantado no período</span><strong>{formatCurrency(receivedInPeriod)}</strong><small>Receita efetivamente disponível</small></article>
-        <article className="card stat-card dashboard-metric-card"><span>Custos realizados</span><strong>{formatCurrency(realizedCostsInPeriod)}</strong><small>{formatCurrency(expensesPaidInPeriod)} despesas + {formatCurrency(tripsCompletedInPeriod)} deslocamentos</small></article>
-        <article className={`card stat-card dashboard-metric-card ${cashResultInPeriod < 0 ? "dashboard-metric-negative" : "dashboard-metric-positive"}`}><span>Resultado de caixa</span><strong>{formatCurrency(cashResultInPeriod)}</strong><small>Levantamentos menos custos pagos</small></article>
-      </section>
-      )}
-
-      {canViewFinance && (
-      <section className="card panel dashboard-portfolio-card">
-        <div className="panel-header"><div><h2>{selectedProcess ? "Posição financeira do processo" : "Carteira financeira atual"}</h2><p>{selectedProcess ? `Valores acumulados do processo ${selectedProcess.process_number}.` : "Posição acumulada de todos os processos."}</p></div><Link href={feesHref}>Abrir honorários</Link></div>
-        <div className="dashboard-portfolio-grid">
-          <div><span>Saldo depositado em juízo</span><strong>{formatCurrency(portfolioDepositBalance)}</strong><small>Aguardando levantamento</small></div>
-          <div><span>Total ainda a receber</span><strong>{formatCurrency(portfolioReceivable)}</strong><small>Homologado menos levantado</small></div>
-          <div><span>Custo operacional previsto</span><strong>{formatCurrency(portfolioCosts)}</strong><small>Despesas e deslocamentos</small></div>
-          <div><span>Resultado previsto da carteira</span><strong className={portfolioForecastResult < 0 ? "metric-negative" : "metric-positive"}>{formatCurrency(portfolioForecastResult)}</strong><small>Homologado menos custos previstos</small></div>
-          <div><span>Reembolsos pendentes</span><strong>{formatCurrency(portfolioReimbursements)}</strong><small>Valores ainda não recuperados</small></div>
-        </div>
-      </section>
-      )}
-
-      <section className="dashboard-operational-grid">
-        <Link className="card dashboard-operational-card" href={processesHref}><span>Processos ativos</span><strong>{activeProcesses.length}</strong><small>{urgentProcesses.length} com prioridade alta/urgente</small></Link>
-        <Link className="card dashboard-operational-card" href="/agenda"><span>Diligências ativas</span><strong>{activeDiligences.length}</strong><small>{upcomingDiligences.length} futuras · {overdueDiligences.length} vencidas</small></Link>
-        <Link className="card dashboard-operational-card" href="/laudos"><span>Laudos em andamento</span><strong>{reportsInProgress.length}</strong><small>{scopedReports.filter((report) => report.status === "in_review").length} em revisão</small></Link>
-        <Link className="card dashboard-operational-card" href="/agenda"><span>Prazos próximos</span><strong>{upcomingDeadlines.length}</strong><small>Vencimento nos próximos 7 dias</small></Link>
-        <Link className="card dashboard-operational-card dashboard-operational-danger" href="/alertas"><span>Prazos vencidos</span><strong>{overdueDeadlines.length}</strong><small>Exigem tratamento imediato</small></Link>
-        {canViewFinance && <Link className="card dashboard-operational-card" href={feesHref}><span>Pendências financeiras</span><strong>{financialPending.length}</strong><small>Processos com fluxo incompleto</small></Link>}
-        <Link className="card dashboard-operational-card" href={processesHref}><span>Sem movimentação há 30 dias</span><strong>{staleProcesses.length}</strong><small>Revisar andamento e próximos atos</small></Link>
-      </section>
-
-      <section className="dashboard-grid dashboard-financial-grid">
-        {canViewFinance && (
-        <article className="card panel">
-          <div className="panel-header"><div><h2>{selectedProcess ? "Funil financeiro do processo" : "Funil financeiro da carteira"}</h2><p>Conversão entre proposta, homologação, depósito e levantamento.</p></div><Link href={feesHref}>Detalhar</Link></div>
-          <FinancialFunnel items={[
-            { label: "Proposto", value: portfolioProposed, help: "Valores apresentados", tone: "blue" },
-            { label: "Homologado", value: portfolioApproved, help: "Receita aprovada", tone: "purple" },
-            { label: "Depositado", value: portfolioDeposited, help: "Valores ingressados judicialmente", tone: "warning" },
-            { label: "Levantado", value: portfolioReceived, help: "Receita efetivamente recebida", tone: "green" },
-          ]} />
-        </article>
-        )}
-
-        <article className="card panel">
-          <div className="panel-header"><div><h2>Distribuição dos processos</h2><p>{selectedProcess ? "Situação do processo selecionado." : "Situação atual da carteira."}</p></div><Link href={processesHref}>Ver processos</Link></div>
-          <StatusBars items={processStatusItems} />
-        </article>
-      </section>
-
-      {canViewFinance && (
-      <section className="dashboard-grid dashboard-analysis-grid">
-        <article className="card panel">
-          <div className="panel-header"><div><h2>Fluxo de caixa — últimos 6 meses</h2><p>Levantamentos confirmados versus custos realizados.</p></div><span className="dashboard-update-label">Atualizado agora</span></div>
-          <MonthlyCashChart items={monthBuckets} />
-        </article>
-
-        <article className="card panel">
-          <div className="panel-header"><div><h2>Composição dos custos</h2><p>{selectedPeriod.label}{selectedProcess ? ` · ${selectedProcess.process_number}` : ""}</p></div><Link href={expensesHref}>Abrir despesas</Link></div>
-          <BreakdownBars items={expenseBreakdown} />
-        </article>
-      </section>
-      )}
-
-      <section className="dashboard-grid dashboard-priority-grid">
-        <article className="card panel">
-          <div className="panel-header"><div><h2>Prioridades para ação</h2><p>Itens ordenados por urgência operacional e financeira.</p></div><Link href="/alertas">Central de alertas</Link></div>
-          {!prioritizedActions.length ? (
-            <div className="empty-state dashboard-compact-empty"><strong>Nenhuma pendência crítica localizada.</strong>O fluxo operacional está regular.</div>
-          ) : (
-            <div className="dashboard-action-list">
-              {prioritizedActions.map((action) => (
-                <Link className="dashboard-action-row" href={action.href} key={action.key}>
-                  <i className={`dashboard-action-indicator action-${action.level}`} />
-                  <div><strong>{action.title}</strong><span>{action.description}</span></div>
-                  <b className={`dashboard-action-label action-label-${action.level}`}>{action.label}</b>
-                  <em>›</em>
-                </Link>
-              ))}
+      <section className="home-dashboard-grid">
+        <article className="card panel home-panel-main">
+          <div className="panel-header">
+            <div>
+              <h2>Proximas pericias a realizar</h2>
+              <p>Processos ativos priorizados por vencimento de laudo e movimentacao.</p>
             </div>
-          )}
-        </article>
+            <Link href="/processos">Ver processos</Link>
+          </div>
 
-        <article className="card panel">
-          <div className="panel-header"><div><h2>Próximos compromissos</h2><p>Agenda operacional dos próximos 7 dias{selectedProcess ? ` para ${selectedProcess.process_number}` : ""}.</p></div><Link href="/agenda">Abrir agenda</Link></div>
-          {!upcomingEvents.length ? (
-            <div className="empty-state dashboard-compact-empty"><strong>Nenhum compromisso nos próximos 7 dias.</strong></div>
+          {!nextProcesses.length ? (
+            <div className="empty-state home-empty-state"><strong>Nenhuma pericia pendente.</strong>A carteira ativa esta vazia.</div>
           ) : (
-            <div className="dashboard-upcoming-list">
-              {upcomingEvents.slice(0, 6).map((event) => {
-                const process = relatedProcess(event.processes);
+            <div className="home-process-list">
+              {nextProcesses.slice(0, 7).map((process) => {
+                const dueDays = daysFromNow(process.report_due_at, now);
+                const isOverdue = dueDays !== null && dueDays < 0;
                 return (
-                  <Link href={`/agenda/${event.id}`} className="dashboard-upcoming-row" key={event.id}>
-                    <div className={`agenda-event-icon agenda-icon-${event.event_type}`}>{eventTypeIcon(event.event_type)}</div>
-                    <div><strong>{event.title}</strong><span>{eventTypeLabel(event.event_type)}{process?.process_number ? ` · ${process.process_number}` : ""}</span><small>{event.location_name || event.city || "Local não informado"}</small></div>
-                    <div><span>Data</span><strong>{formatDateTime(event.starts_at)}</strong></div>
+                  <Link className="home-process-row" href={`/processos/${process.id}`} key={process.id}>
+                    <div>
+                      <strong>{process.process_number}</strong>
+                      <span>{process.subject || "Objeto nao informado"}</span>
+                    </div>
+                    <div>
+                      <span>Etapa</span>
+                      <b>{processStatusLabel(process.status)}</b>
+                    </div>
+                    <div>
+                      <span>Prioridade</span>
+                      <b>{priorityLabel(process.priority)}</b>
+                    </div>
+                    <div>
+                      <span>Laudo</span>
+                      <b className={isOverdue ? "metric-negative" : ""}>{formatDate(process.report_due_at)}</b>
+                    </div>
                   </Link>
                 );
               })}
             </div>
           )}
         </article>
+
+        <aside className="home-side-stack">
+          <article className="card panel">
+            <div className="panel-header">
+              <div>
+                <h2>Resumo da carteira</h2>
+                <p>Situacao atual sem indicadores financeiros.</p>
+              </div>
+            </div>
+            <div className="home-summary-list">
+              <div><span>Processos cadastrados</span><strong>{processes.length}</strong></div>
+              <div><span>Em preparacao</span><strong>{planningProcesses.length}</strong></div>
+              <div><span>Diligencia agendada</span><strong>{scheduledProcesses.length}</strong></div>
+              <div><span>Alta prioridade</span><strong>{urgentProcesses.length}</strong></div>
+              <div><span>Laudos vencidos</span><strong className={reportOverdue.length ? "metric-negative" : ""}>{reportOverdue.length}</strong></div>
+              <div><span>Diligencias vencidas</span><strong className={overdueDiligences.length ? "metric-negative" : ""}>{overdueDiligences.length}</strong></div>
+            </div>
+          </article>
+
+          <article className="card panel">
+            <div className="panel-header">
+              <div>
+                <h2>Etapas da carteira</h2>
+                <p>Distribuicao dos processos por status.</p>
+              </div>
+            </div>
+            {!statusItems.length ? (
+              <div className="empty-state home-empty-state"><strong>Nenhum processo cadastrado.</strong></div>
+            ) : (
+              <div className="home-status-list">
+                {statusItems.map((item) => (
+                  <div className="home-status-row" key={item.status}>
+                    <span>{item.label}</span>
+                    <strong>{item.value}</strong>
+                  </div>
+                ))}
+              </div>
+            )}
+          </article>
+        </aside>
       </section>
 
-      {canViewFinance && (
-      <section className="card panel dashboard-top-processes">
-        <div className="panel-header"><div><h2>{selectedProcess ? "Resultado previsto do processo" : "Processos com maior resultado previsto"}</h2><p>Honorários homologados descontados dos custos previstos.</p></div><Link href={expensesHref}>Analisar custos</Link></div>
-        {!topFinancialProcesses.length ? (
-          <div className="empty-state dashboard-compact-empty"><strong>Ainda não há valores homologados suficientes para comparação.</strong></div>
-        ) : (
-          <div className="dashboard-ranking-list">
-            {topFinancialProcesses.map((row, index) => {
-              const cost = numberValue(row.expenses_forecast_total) + numberValue(row.trip_cost_forecast_total);
-              return (
-                <Link href={`/honorarios/${row.process_id}`} className="dashboard-ranking-row" key={row.process_id}>
-                  <span className="dashboard-ranking-position">{index + 1}</span>
-                  <div><strong>{row.process_number}</strong><span>{row.subject || "Objeto não informado"}</span></div>
-                  <div><span>Homologado</span><strong>{formatCurrency(row.approved_total)}</strong></div>
-                  <div><span>Custos previstos</span><strong>{formatCurrency(cost)}</strong></div>
-                  <div><span>Resultado previsto</span><strong className={numberValue(row.forecast_result) < 0 ? "metric-negative" : "metric-positive"}>{formatCurrency(row.forecast_result)}</strong></div>
-                  <b>›</b>
-                </Link>
-              );
-            })}
+      <section className="home-dashboard-grid home-secondary-grid">
+        <article className="card panel">
+          <div className="panel-header">
+            <div>
+              <h2>Proximas diligencias</h2>
+              <p>Atos periciais agendados a partir de hoje.</p>
+            </div>
+            <Link href="/agenda">Abrir agenda</Link>
           </div>
-        )}
+          {!upcomingDiligences.length ? (
+            <div className="empty-state home-empty-state"><strong>Nenhuma diligencia futura agendada.</strong></div>
+          ) : (
+            <div className="home-event-list">
+              {upcomingDiligences.slice(0, 5).map((event) => {
+                const process = relatedProcess(event.processes);
+                return (
+                  <Link className="home-event-row" href={`/agenda/${event.id}`} key={event.id}>
+                    <span className={`agenda-event-icon agenda-icon-${event.event_type}`}>{eventTypeIcon(event.event_type)}</span>
+                    <div>
+                      <strong>{event.title}</strong>
+                      <span>{eventTypeLabel(event.event_type)}{process?.process_number ? ` - ${process.process_number}` : ""}</span>
+                    </div>
+                    <b>{formatDateTime(event.starts_at)}</b>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </article>
+
+        <article className="card panel">
+          <div className="panel-header">
+            <div>
+              <h2>Ultimas realizadas</h2>
+              <p>Pericias entregues ou encerradas recentemente.</p>
+            </div>
+            <Link href="/processos">Historico</Link>
+          </div>
+          {!completedProcesses.length ? (
+            <div className="empty-state home-empty-state"><strong>Nenhuma pericia realizada ainda.</strong></div>
+          ) : (
+            <div className="home-completed-list">
+              {completedProcesses.slice(0, 5).map((process) => (
+                <Link className="home-completed-row" href={`/processos/${process.id}`} key={process.id}>
+                  <div>
+                    <strong>{process.process_number}</strong>
+                    <span>{process.subject || "Objeto nao informado"}</span>
+                  </div>
+                  <b>{processStatusLabel(process.status)}</b>
+                </Link>
+              ))}
+            </div>
+          )}
+        </article>
       </section>
-      )}
     </>
   );
 }

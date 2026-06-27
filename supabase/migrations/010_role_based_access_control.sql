@@ -428,7 +428,7 @@ for select to authenticated using (public.can_view_finance(organization_id));
 
 drop policy if exists "financial_attachments_insert_member" on public.financial_attachments;
 create policy "financial_attachments_insert_finance" on public.financial_attachments
-for insert to authenticated with check (public.can_write_finance(organization_id) and uploaded_by = auth.uid());
+for insert to authenticated with check (public.can_write_finance(organization_id) and created_by = auth.uid());
 
 drop policy if exists "financial_attachments_update_member" on public.financial_attachments;
 create policy "financial_attachments_update_finance" on public.financial_attachments
