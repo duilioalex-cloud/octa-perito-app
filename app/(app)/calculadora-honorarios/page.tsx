@@ -13,6 +13,12 @@ function num(value: number | string | null | undefined) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function moneyFromSummary(summaryValue: number | string | null | undefined, processValue: number | string | null | undefined) {
+  const summary = num(summaryValue);
+  const process = num(processValue);
+  return summary > 0 || process <= 0 ? summary : process;
+}
+
 export default async function FeeCalculatorPage({
   searchParams,
 }: {
@@ -76,6 +82,10 @@ export default async function FeeCalculatorPage({
     ? generateFeeProposalDocumentAction.bind(null, selectedProcess.id)
     : undefined;
   const calculatorMetadata = ((primaryFee?.metadata as any)?.calculator || (calculatorExpense?.metadata as any)?.calculator || null) as Record<string, any> | null;
+  const proposedTotal = selectedProcess ? moneyFromSummary(financialSummary?.proposed_total, selectedProcess.fee_proposed) : 0;
+  const approvedTotal = selectedProcess ? moneyFromSummary(financialSummary?.approved_total, selectedProcess.fee_arbitrated) : 0;
+  const operationalCost = num(financialSummary?.operational_cost_forecast_total ?? ((financialSummary?.expenses_forecast_total ?? 0) + (financialSummary?.trip_cost_forecast_total ?? 0)));
+  const forecastResult = approvedTotal > 0 ? approvedTotal - operationalCost : num(financialSummary?.forecast_result);
 
   return (
     <>
@@ -146,8 +156,8 @@ export default async function FeeCalculatorPage({
           <section className="card process-summary-card process-finance-summary-card" style={{ marginTop: 16 }}>
             <div><span>Processo</span><strong>{selectedProcess.process_number}</strong></div>
             <div><span>Status</span><strong>{processStatusLabel(selectedProcess.status)}</strong></div>
-            <div><span>Ja proposto</span><strong>{formatCurrency(financialSummary?.proposed_total ?? selectedProcess.fee_proposed)}</strong></div>
-            <div><span>Homologado</span><strong>{formatCurrency(financialSummary?.approved_total ?? selectedProcess.fee_arbitrated)}</strong></div>
+            <div><span>Ja proposto</span><strong>{formatCurrency(proposedTotal)}</strong></div>
+            <div><span>Homologado</span><strong>{formatCurrency(approvedTotal)}</strong></div>
           </section>
 
           {!calculatorAction ? (
@@ -169,10 +179,10 @@ export default async function FeeCalculatorPage({
                 expertiseArea: selectedProcess.expertise_area || "",
               }}
               summary={{
-                proposedTotal: num(financialSummary?.proposed_total ?? selectedProcess.fee_proposed),
-                approvedTotal: num(financialSummary?.approved_total ?? selectedProcess.fee_arbitrated),
-                operationalCost: num(financialSummary?.operational_cost_forecast_total ?? ((financialSummary?.expenses_forecast_total ?? 0) + (financialSummary?.trip_cost_forecast_total ?? 0))),
-                forecastResult: num(financialSummary?.forecast_result),
+                proposedTotal,
+                approvedTotal,
+                operationalCost,
+                forecastResult,
               }}
               initial={calculatorMetadata ? { calculator: calculatorMetadata, memoryText: calculatorMetadata.memory_text || primaryFee?.notes || "" } : null}
             />

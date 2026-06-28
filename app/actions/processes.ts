@@ -56,15 +56,17 @@ async function syncPrimaryFeeFromProcessForm(
     userId: string;
     expertiseType: string | null;
     proposed: number;
+    charged: number;
     arbitrated: number;
     deposited: number;
     received: number;
   },
 ) {
-  const hasFinancialValue = payload.proposed > 0 || payload.arbitrated > 0 || payload.deposited > 0 || payload.received > 0;
+  const chargedAmount = payload.charged > 0 ? payload.charged : payload.proposed;
+  const hasFinancialValue = payload.proposed > 0 || chargedAmount > 0 || payload.arbitrated > 0 || payload.deposited > 0 || payload.received > 0;
   const { data: existingFee } = await supabase
     .from("process_fees")
-    .select("id")
+    .select("id,metadata")
     .eq("process_id", payload.processId)
     .eq("organization_id", payload.organizationId)
     .eq("is_primary", true)
@@ -78,11 +80,17 @@ async function syncPrimaryFeeFromProcessForm(
   const feePayload = {
     status: feeStatusFromLegacyValues(payload),
     fee_type: payload.expertiseType === "technical_assistant" ? "technical_assistant" : payload.expertiseType === "extrajudicial" ? "extrajudicial" : "judicial_expert",
-    proposed_amount: payload.proposed,
+    proposed_amount: payload.proposed || chargedAmount,
     initial_arbitrated_amount: payload.arbitrated,
     approved_amount: payload.arbitrated,
     opening_deposited_amount: payload.deposited,
     opening_received_amount: payload.received,
+    metadata: {
+      ...(((existingFee?.metadata || {}) as Record<string, any>) || {}),
+      source: "process_form_sync",
+      charged_amount: chargedAmount,
+      version: "0.9.11",
+    },
   };
 
   if (existingFee?.id) {
@@ -107,7 +115,8 @@ async function syncPrimaryFeeFromProcessForm(
     notes: "Registro criado automaticamente a partir dos honorarios informados no cadastro do processo.",
     metadata: {
       source: "process_form_sync",
-      version: "0.9.9",
+      charged_amount: chargedAmount,
+      version: "0.9.11",
     },
     created_by: payload.userId,
     ...feePayload,
@@ -189,6 +198,8 @@ export async function createProcessAction(formData: FormData) {
   const organization = await requireCurrentOrganization("processes:write");
   const processNumber = text(formData, "process_number");
   if (processNumber.length < 5) redirect("/processos/novo?error=Informe o número do processo.");
+  const feeCharged = money(formData, "fee_charged");
+  const feeProposed = money(formData, "fee_proposed");
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -213,7 +224,7 @@ export async function createProcessAction(formData: FormData) {
     report_due_at: text(formData, "report_due_at") || null,
     diligence_at: nullableDateTime(formData, "diligence_at"),
     responsible_name: nullableText(formData, "responsible_name"),
-    fee_proposed: money(formData, "fee_proposed"),
+    fee_proposed: feeProposed || feeCharged,
     fee_arbitrated: money(formData, "fee_arbitrated"),
     fee_deposited: money(formData, "fee_deposited"),
     fee_received: money(formData, "fee_received"),
@@ -272,6 +283,7 @@ export async function createProcessAction(formData: FormData) {
       userId: user.id,
       expertiseType: payload.expertise_type,
       proposed: payload.fee_proposed,
+      charged: feeCharged,
       arbitrated: payload.fee_arbitrated,
       deposited: payload.fee_deposited,
       received: payload.fee_received,
@@ -302,6 +314,8 @@ export async function updateProcessAction(processId: string, formData: FormData)
 
   const processNumber = text(formData, "process_number");
   if (processNumber.length < 5) redirect(`/processos/${processId}/editar?error=${encodeURIComponent("Informe o número do processo.")}`);
+  const feeCharged = money(formData, "fee_charged");
+  const feeProposed = money(formData, "fee_proposed");
 
   const payload = {
     process_number: processNumber,
@@ -321,7 +335,7 @@ export async function updateProcessAction(processId: string, formData: FormData)
     report_due_at: text(formData, "report_due_at") || null,
     diligence_at: nullableDateTime(formData, "diligence_at"),
     responsible_name: nullableText(formData, "responsible_name"),
-    fee_proposed: money(formData, "fee_proposed"),
+    fee_proposed: feeProposed || feeCharged,
     fee_arbitrated: money(formData, "fee_arbitrated"),
     fee_deposited: money(formData, "fee_deposited"),
     fee_received: money(formData, "fee_received"),
@@ -343,6 +357,7 @@ export async function updateProcessAction(processId: string, formData: FormData)
       userId: user.id,
       expertiseType: payload.expertise_type,
       proposed: payload.fee_proposed,
+      charged: feeCharged,
       arbitrated: payload.fee_arbitrated,
       deposited: payload.fee_deposited,
       received: payload.fee_received,

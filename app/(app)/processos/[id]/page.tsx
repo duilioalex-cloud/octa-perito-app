@@ -26,6 +26,17 @@ import {
 
 export const metadata = { title: "Detalhes da perícia" };
 
+function num(value: number | string | null | undefined) {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function moneyFromSummary(summaryValue: number | string | null | undefined, processValue: number | string | null | undefined) {
+  const summary = num(summaryValue);
+  const process = num(processValue);
+  return summary > 0 || process <= 0 ? summary : process;
+}
+
 export default async function ProcessDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string; success?: string }> }) {
   const { id } = await params;
   const query = await searchParams;
@@ -82,6 +93,12 @@ export default async function ProcessDetailPage({ params, searchParams }: { para
   const proposalAction = generateFeeProposalDocumentAction.bind(null, id);
   const canDelete = ["owner", "admin"].includes(organization.role);
   const calculatorMetadata = ((primaryFee?.metadata as any)?.calculator || (calculatorExpense?.metadata as any)?.calculator || null) as Record<string, any> | null;
+  const proposedTotal = moneyFromSummary(financialSummary?.proposed_total, process.fee_proposed);
+  const approvedTotal = moneyFromSummary(financialSummary?.approved_total, process.fee_arbitrated);
+  const depositedTotal = moneyFromSummary(financialSummary?.deposited_total, process.fee_deposited);
+  const receivedTotal = moneyFromSummary(financialSummary?.received_total, process.fee_received);
+  const operationalCost = num(financialSummary?.operational_cost_forecast_total ?? ((financialSummary?.expenses_forecast_total ?? 0) + (financialSummary?.trip_cost_forecast_total ?? 0)));
+  const forecastResult = approvedTotal > 0 ? approvedTotal - operationalCost : num(financialSummary?.forecast_result);
 
   return (
     <>
@@ -97,12 +114,12 @@ export default async function ProcessDetailPage({ params, searchParams }: { para
         <div><span>Status atual</span><strong>{processStatusLabel(process.status)}</strong></div>
         {canViewFinance ? (
           <>
-            <div><span>Honorários homologados</span><strong>{formatCurrency(financialSummary?.approved_total ?? process.fee_arbitrated)}</strong></div>
-            <div><span>Honorários propostos</span><strong>{formatCurrency(financialSummary?.proposed_total ?? process.fee_proposed)}</strong></div>
-            <div><span>Custo previsto</span><strong>{formatCurrency(financialSummary?.operational_cost_forecast_total ?? ((financialSummary?.expenses_forecast_total ?? 0) + (financialSummary?.trip_cost_forecast_total ?? 0)))}</strong></div>
-            <div><span>Resultado previsto</span><strong>{formatCurrency(financialSummary?.forecast_result ?? 0)}</strong></div>
-            <div><span>Depositado</span><strong>{formatCurrency(financialSummary?.deposited_total ?? process.fee_deposited)}</strong></div>
-            <div><span>Recebido</span><strong>{formatCurrency(financialSummary?.received_total ?? process.fee_received)}</strong></div>
+            <div><span>Honorários homologados</span><strong>{formatCurrency(approvedTotal)}</strong></div>
+            <div><span>Honorários propostos</span><strong>{formatCurrency(proposedTotal)}</strong></div>
+            <div><span>Custo previsto</span><strong>{formatCurrency(operationalCost)}</strong></div>
+            <div><span>Resultado previsto</span><strong>{formatCurrency(forecastResult)}</strong></div>
+            <div><span>Depositado</span><strong>{formatCurrency(depositedTotal)}</strong></div>
+            <div><span>Recebido</span><strong>{formatCurrency(receivedTotal)}</strong></div>
           </>
         ) : (
           <>
@@ -159,10 +176,10 @@ export default async function ProcessDetailPage({ params, searchParams }: { para
             expertiseArea: process.expertise_area || "",
           }}
           summary={{
-            proposedTotal: Number(financialSummary?.proposed_total ?? process.fee_proposed ?? 0),
-            approvedTotal: Number(financialSummary?.approved_total ?? process.fee_arbitrated ?? 0),
-            operationalCost: Number(financialSummary?.operational_cost_forecast_total ?? ((financialSummary?.expenses_forecast_total ?? 0) + (financialSummary?.trip_cost_forecast_total ?? 0))),
-            forecastResult: Number(financialSummary?.forecast_result ?? 0),
+            proposedTotal,
+            approvedTotal,
+            operationalCost,
+            forecastResult,
           }}
           initial={calculatorMetadata ? { calculator: calculatorMetadata, memoryText: calculatorMetadata.memory_text || primaryFee?.notes || "" } : null}
         />

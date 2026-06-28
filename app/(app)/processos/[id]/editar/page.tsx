@@ -2,21 +2,33 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SubmitButton } from "@/components/submit-button";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentOrganization } from "@/lib/current-organization";
+import { requireCurrentOrganization } from "@/lib/current-organization";
 import { updateProcessAction } from "@/app/actions/processes";
 import { EXPERTISE_TYPE_OPTIONS, PRIORITY_OPTIONS, PROCESS_STATUS_OPTIONS, toDateTimeLocal } from "@/lib/process-options";
 
 export const metadata = { title: "Editar processo" };
 
+function firstPositive(...values: unknown[]) {
+  for (const value of values) {
+    const parsed = Number(value ?? 0);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 0;
+}
+
 export default async function EditProcessPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string }> }) {
   const { id } = await params;
   const query = await searchParams;
-  const organization = await getCurrentOrganization();
-  if (!organization) return null;
+  const organization = await requireCurrentOrganization("processes:write");
   const supabase = await createClient();
-  const { data: process } = await supabase.from("processes").select("*").eq("id", id).eq("organization_id", organization.id).maybeSingle();
+  const [{ data: process }, { data: fee }] = await Promise.all([
+    supabase.from("processes").select("*").eq("id", id).eq("organization_id", organization.id).maybeSingle(),
+    supabase.from("process_fees").select("proposed_amount,metadata").eq("process_id", id).eq("organization_id", organization.id).eq("is_primary", true).neq("status", "cancelled").order("updated_at", { ascending: false }).limit(1).maybeSingle(),
+  ]);
   if (!process) notFound();
   const action = updateProcessAction.bind(null, id);
+  const feeMetadata = ((fee?.metadata || {}) as Record<string, any>) || {};
+  const chargedAmount = firstPositive(feeMetadata.charged_amount, feeMetadata.calculator?.charged_amount, feeMetadata.calculator?.totals?.amount_to_charge, fee?.proposed_amount, process.fee_proposed);
 
   return (
     <>
@@ -51,7 +63,8 @@ export default async function EditProcessPage({ params, searchParams }: { params
 
           <div className="form-section"><h2>Honorários</h2></div>
           <div className="form-grid">
-            <label className="field"><span>Valor proposto (R$)</span><input className="input" name="fee_proposed" inputMode="decimal" defaultValue={Number(process.fee_proposed ?? 0).toFixed(2).replace(".", ",")} /></label>
+            <label className="field"><span>Honorarios propostos (R$)</span><input className="input" name="fee_proposed" inputMode="decimal" defaultValue={Number(process.fee_proposed ?? 0).toFixed(2).replace(".", ",")} /></label>
+            <label className="field"><span>Valor que o perito cobrou (R$)</span><input className="input" name="fee_charged" inputMode="decimal" defaultValue={Number(chargedAmount || 0).toFixed(2).replace(".", ",")} /></label>
             <label className="field"><span>Valor arbitrado (R$)</span><input className="input" name="fee_arbitrated" inputMode="decimal" defaultValue={Number(process.fee_arbitrated ?? 0).toFixed(2).replace(".", ",")} /></label>
             <label className="field"><span>Valor depositado (R$)</span><input className="input" name="fee_deposited" inputMode="decimal" defaultValue={Number(process.fee_deposited ?? 0).toFixed(2).replace(".", ",")} /></label>
             <label className="field"><span>Valor recebido (R$)</span><input className="input" name="fee_received" inputMode="decimal" defaultValue={Number(process.fee_received ?? 0).toFixed(2).replace(".", ",")} /></label>

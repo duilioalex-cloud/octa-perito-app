@@ -124,8 +124,11 @@ export function FeeCalculator({ action, proposalAction, returnTo, processInfo, s
   const calculator: Record<string, any> = initial?.calculator ?? {};
   const stageHours = (calculator.stage_hours || {}) as Record<string, unknown>;
   const expenses = (calculator.expenses || {}) as Record<string, unknown>;
+  const savedChargedAmount = calculator.charged_amount ?? calculator.totals?.amount_to_charge ?? calculator.totals?.total_suggested;
 
   const defaultValues: Record<string, string> = {
+    manual_proposed_amount: toInput(calculator.manual_proposed_amount ?? summary.proposedTotal),
+    manual_charged_amount: toInput(savedChargedAmount ?? summary.proposedTotal),
     calculator_expertise_area: String(calculator.expertise_area || processInfo.expertiseArea || "Engenharia civil"),
     justice_branch: String(calculator.justice_branch || "estadual"),
     applicable_table: String(calculator.applicable_table || ""),
@@ -158,7 +161,8 @@ export function FeeCalculator({ action, proposalAction, returnTo, processInfo, s
   }
 
   function n(name: string) {
-    const raw = String(values[name] || "").replace(/\s/g, "").replace(",", ".");
+    const rawText = String(values[name] || "").replace(/\s/g, "");
+    const raw = rawText.includes(",") ? rawText.replace(/\./g, "").replace(",", ".") : rawText;
     const value = Number(raw);
     return Number.isFinite(value) ? value : 0;
   }
@@ -199,14 +203,24 @@ export function FeeCalculator({ action, proposalAction, returnTo, processInfo, s
     };
   }, [values, complexity]);
 
+  const manualProposedAmount = n("manual_proposed_amount");
+  const manualChargedAmount = n("manual_charged_amount");
+  const amountToCharge = manualChargedAmount > 0 ? manualChargedAmount : result.totalSuggested > 0 ? result.totalSuggested : manualProposedAmount;
+  const proposedToSave = manualProposedAmount > 0 ? manualProposedAmount : amountToCharge;
+  const effectiveAdvanceAmount = amountToCharge * result.advancePercentage / 100;
+  const effectiveBalanceAmount = amountToCharge - effectiveAdvanceAmount;
+  const effectiveAboveTable = result.tableLimit > 0 && amountToCharge > result.tableLimit;
+
   const memoryPreview = [
     `Foram estimadas ${result.hoursTotal.toLocaleString("pt-BR")} horas técnicas para estudo dos autos, diligência, análises, elaboração do laudo, revisão e esclarecimentos.`,
     `Honorários técnicos estimados: ${money(result.professionalTotal)}.`,
     `Despesas operacionais estimadas: ${money(result.directExpenses)}.`,
-    `Valor a cobrar / total da proposta: ${money(result.totalSuggested)}.`,
-    `Depósito inicial sugerido (${result.advancePercentage.toLocaleString("pt-BR")}%): ${money(result.advanceAmount)}.`,
+    `Sugestao calculada pela calculadora: ${money(result.totalSuggested)}.`,
+    `Honorarios propostos informados: ${money(proposedToSave)}.`,
+    `Valor que o perito cobrou: ${money(amountToCharge)}.`,
+    `Depósito inicial sugerido (${result.advancePercentage.toLocaleString("pt-BR")}%): ${money(effectiveAdvanceAmount)}.`,
     legalAid ? "Justiça gratuita marcada: conferir tabela aplicável e fundamentar eventual pedido acima do limite." : "",
-    result.aboveTable ? "Atenção: o valor sugerido supera a tabela/limite informado." : "",
+    effectiveAboveTable ? "Atenção: o valor sugerido supera a tabela/limite informado." : "",
   ].filter(Boolean).join("\n");
 
   return (
@@ -220,26 +234,34 @@ export function FeeCalculator({ action, proposalAction, returnTo, processInfo, s
       </div>
 
       <form className="fee-calculator-form" action={action}>
-        <input type="hidden" name="amount_to_charge" value={result.totalSuggested.toFixed(2)} />
+        <input type="hidden" name="calculated_total" value={result.totalSuggested.toFixed(2)} />
+        <input type="hidden" name="amount_to_charge" value={amountToCharge.toFixed(2)} />
         {returnTo && <input type="hidden" name="return_to" value={returnTo} />}
         <div className="calculator-kpis">
           <div><span>Honorários técnicos</span><strong>{money(result.professionalTotal)}</strong></div>
           <div><span>Despesas estimadas</span><strong>{money(result.directExpenses)}</strong></div>
-          <div><span>Valor a cobrar</span><strong>{money(result.totalSuggested)}</strong></div>
-          <div><span>Depósito inicial</span><strong>{money(result.advanceAmount)}</strong></div>
+          <div><span>Valor a cobrar</span><strong>{money(amountToCharge)}</strong></div>
+          <div><span>Depósito inicial</span><strong>{money(effectiveAdvanceAmount)}</strong></div>
         </div>
 
         <div className="calculator-charge-card">
           <div>
             <span>Valor a cobrar do processo</span>
-            <strong>{money(result.totalSuggested)}</strong>
-            <p>Este e o valor que sera salvo como honorarios propostos e usado para gerar a proposta de honorarios.</p>
+            <strong>{money(amountToCharge)}</strong>
+            <p>Este e o valor que sera salvo como valor cobrado pelo perito e usado para gerar a proposta de honorarios.</p>
           </div>
           <div>
             <span>Deposito inicial sugerido</span>
-            <b>{money(result.advanceAmount)}</b>
-            <small>Saldo apos entrega/esclarecimentos: {money(result.balanceAmount)}</small>
+            <b>{money(effectiveAdvanceAmount)}</b>
+            <small>Saldo apos entrega/esclarecimentos: {money(effectiveBalanceAmount)}</small>
           </div>
+        </div>
+
+        <div className="calculator-section">
+          <div className="finance-form-divider full"><strong>Valores informados pelo perito</strong><span>Use estes campos para registrar manualmente a proposta e o valor cobrado, mesmo sem usar o cálculo automático.</span></div>
+          <label className="field"><span>Honorarios propostos no processo</span><input className="input" inputMode="decimal" name="manual_proposed_amount" value={values.manual_proposed_amount} onChange={(event) => setField("manual_proposed_amount", event.target.value)} placeholder="0,00" /></label>
+          <label className="field"><span>Valor que o perito cobrou</span><input className="input" inputMode="decimal" name="manual_charged_amount" value={values.manual_charged_amount} onChange={(event) => setField("manual_charged_amount", event.target.value)} placeholder="0,00" /></label>
+          <div className="notice notice-neutral full">Se o valor cobrado ficar vazio, o OCTA usa a sugestao calculada. Se os honorarios propostos ficarem vazios, usa o valor cobrado.</div>
         </div>
 
         <div className="calculator-process-facts">
@@ -304,7 +326,7 @@ export function FeeCalculator({ action, proposalAction, returnTo, processInfo, s
           <div className="finance-form-divider full"><strong>Tabela aplicável e justificativa</strong><span>Informe limite/tabela quando houver AJG ou referência local.</span></div>
           <label className="field"><span>Tabela/referência</span><input className="input" name="applicable_table" value={values.applicable_table} onChange={(event) => setField("applicable_table", event.target.value)} placeholder="Ex.: tabela TJMG, CNJ, CSJT, CJF ou manual" /></label>
           <label className="field"><span>Limite informado</span><input className="input" type="number" min="0" step="0.01" name="table_limit_amount" value={values.table_limit_amount} onChange={(event) => setField("table_limit_amount", event.target.value)} /></label>
-          {result.aboveTable && <div className="notice notice-error full">O total sugerido está acima da tabela/limite informado. Fundamente com complexidade, horas, deslocamento, equipe, risco e peculiaridades do caso.</div>}
+          {effectiveAboveTable && <div className="notice notice-error full">O valor cobrado está acima da tabela/limite informado. Fundamente com complexidade, horas, deslocamento, equipe, risco e peculiaridades do caso.</div>}
           <label className="field full"><span>Justificativa complementar</span><textarea className="textarea textarea-small" name="custom_justification" value={values.custom_justification} onChange={(event) => setField("custom_justification", event.target.value)} placeholder="Ex.: volume documental, múltiplos locais, risco, urgência, equipamentos, quesitos complexos..." /></label>
         </div>
 

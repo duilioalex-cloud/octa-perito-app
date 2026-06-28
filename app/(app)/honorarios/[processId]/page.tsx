@@ -35,6 +35,20 @@ function num(value: number | string | null | undefined) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function moneyFromSummary(summaryValue: number | string | null | undefined, processValue: number | string | null | undefined) {
+  const summary = num(summaryValue);
+  const process = num(processValue);
+  return summary > 0 || process <= 0 ? summary : process;
+}
+
+function firstPositive(...values: unknown[]) {
+  for (const value of values) {
+    const parsed = Number(value ?? 0);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 0;
+}
+
 export default async function ProcessFeesPage({
   params,
   searchParams,
@@ -48,7 +62,7 @@ export default async function ProcessFeesPage({
   const supabase = await createClient();
 
   const [{ data: process }, { data: fee }, { data: summary }] = await Promise.all([
-    supabase.from("processes").select("id,process_number,subject,plaintiff,defendant,court,district,division,status,expertise_type").eq("id", processId).eq("organization_id", organization.id).maybeSingle(),
+    supabase.from("processes").select("id,process_number,subject,plaintiff,defendant,court,district,division,status,expertise_type,fee_proposed,fee_arbitrated,fee_deposited,fee_received").eq("id", processId).eq("organization_id", organization.id).maybeSingle(),
     supabase.from("process_fees").select("*").eq("process_id", processId).eq("organization_id", organization.id).eq("is_primary", true).neq("status", "cancelled").order("updated_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("process_financial_summary").select("*").eq("process_id", processId).eq("organization_id", organization.id).maybeSingle(),
   ]);
@@ -61,11 +75,14 @@ export default async function ProcessFeesPage({
   const canDelete = ["owner", "admin"].includes(organization.role);
   const saveFee = savePrimaryFeeAction.bind(null, processId, fee?.id || null);
   const createTransaction = fee ? createFeeTransactionAction.bind(null, processId, fee.id) : null;
-  const approved = num(summary?.approved_total);
-  const deposited = num(summary?.deposited_total);
-  const depositBalance = num(summary?.deposit_balance);
-  const received = num(summary?.received_total);
+  const feeMetadata = ((fee?.metadata || {}) as Record<string, any>) || {};
+  const proposed = moneyFromSummary(summary?.proposed_total, process.fee_proposed);
+  const approved = moneyFromSummary(summary?.approved_total, process.fee_arbitrated);
+  const deposited = moneyFromSummary(summary?.deposited_total, process.fee_deposited);
+  const depositBalance = deposited > 0 ? num(summary?.deposit_balance) || deposited : num(summary?.deposit_balance);
+  const received = moneyFromSummary(summary?.received_total, process.fee_received);
   const withheld = num(summary?.withheld_total);
+  const chargedAmount = firstPositive(feeMetadata.charged_amount, feeMetadata.calculator?.charged_amount, feeMetadata.calculator?.totals?.amount_to_charge, fee?.proposed_amount, process.fee_proposed);
   const pendingDeposit = Math.max(approved - deposited, 0);
   const pendingRelease = Math.max(depositBalance, 0);
 
@@ -88,7 +105,7 @@ export default async function ProcessFeesPage({
       {query.success && <div className="notice notice-success">{query.success}</div>}
 
       <section className="card process-summary-card finance-summary-card">
-        <div><span>Proposto</span><strong>{formatCurrency(summary?.proposed_total)}</strong></div>
+        <div><span>Proposto</span><strong>{formatCurrency(proposed)}</strong></div>
         <div><span>Homologado</span><strong>{formatCurrency(approved)}</strong></div>
         <div><span>Depositado</span><strong>{formatCurrency(deposited)}</strong></div>
         <div><span>Saldo judicial</span><strong>{formatCurrency(depositBalance)}</strong></div>
@@ -114,12 +131,13 @@ export default async function ProcessFeesPage({
             <label className="field full"><span>Parte ou responsável pelo pagamento</span><input className="input" name="responsible_party" defaultValue={fee?.responsible_party || ""} placeholder="Ex.: partes em rateio igual ou Sistema AJ/TJMG" /></label>
 
             <div className="full finance-form-divider"><strong>Valores</strong><span>O sistema mantém proposta, homologação, depósito e recebimento como etapas distintas.</span></div>
-            <label className="field"><span>Valor inicialmente arbitrado</span><input className="input" name="initial_arbitrated_amount" inputMode="decimal" defaultValue={moneyInputValue(fee?.initial_arbitrated_amount)} placeholder="0,00" /></label>
-            <label className="field"><span>Valor proposto pelo perito</span><input className="input" name="proposed_amount" inputMode="decimal" defaultValue={moneyInputValue(fee?.proposed_amount)} placeholder="0,00" /></label>
-            <label className="field"><span>Valor homologado</span><input className="input" name="approved_amount" inputMode="decimal" defaultValue={moneyInputValue(fee?.approved_amount)} placeholder="0,00" /></label>
+            <label className="field"><span>Valor inicialmente arbitrado</span><input className="input" name="initial_arbitrated_amount" inputMode="decimal" defaultValue={moneyInputValue(fee?.initial_arbitrated_amount ?? process.fee_arbitrated)} placeholder="0,00" /></label>
+            <label className="field"><span>Honorarios propostos pelo perito</span><input className="input" name="proposed_amount" inputMode="decimal" defaultValue={moneyInputValue(fee?.proposed_amount ?? process.fee_proposed)} placeholder="0,00" /></label>
+            <label className="field"><span>Valor que o perito cobrou</span><input className="input" name="charged_amount" inputMode="decimal" defaultValue={moneyInputValue(chargedAmount)} placeholder="0,00" /></label>
+            <label className="field"><span>Valor homologado/arbitrado</span><input className="input" name="approved_amount" inputMode="decimal" defaultValue={moneyInputValue(fee?.approved_amount ?? process.fee_arbitrated)} placeholder="0,00" /></label>
             <label className="field"><span>Adiantamento solicitado (%)</span><input className="input" name="advance_percentage" inputMode="decimal" defaultValue={moneyInputValue(fee?.advance_percentage)} placeholder="50,00" /></label>
-            <label className="field"><span>Saldo inicial depositado</span><input className="input" name="opening_deposited_amount" inputMode="decimal" defaultValue={moneyInputValue(fee?.opening_deposited_amount)} placeholder="0,00" /></label>
-            <label className="field"><span>Saldo inicial recebido</span><input className="input" name="opening_received_amount" inputMode="decimal" defaultValue={moneyInputValue(fee?.opening_received_amount)} placeholder="0,00" /></label>
+            <label className="field"><span>Saldo inicial depositado</span><input className="input" name="opening_deposited_amount" inputMode="decimal" defaultValue={moneyInputValue(fee?.opening_deposited_amount ?? process.fee_deposited)} placeholder="0,00" /></label>
+            <label className="field"><span>Saldo inicial recebido</span><input className="input" name="opening_received_amount" inputMode="decimal" defaultValue={moneyInputValue(fee?.opening_received_amount ?? process.fee_received)} placeholder="0,00" /></label>
 
             <div className="full finance-form-divider"><strong>Datas de controle</strong><span>Use somente datas efetivamente verificadas nos autos.</span></div>
             <label className="field"><span>Proposta apresentada em</span><input className="input" type="date" name="proposed_at" defaultValue={fee?.proposed_at || ""} /></label>

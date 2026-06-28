@@ -10,6 +10,17 @@ export const metadata = { title: "Processos" };
 
 type SearchParams = Promise<{ q?: string; status?: string; error?: string; success?: string }>;
 
+function num(value: number | string | null | undefined) {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function moneyFromSummary(summaryValue: number | string | null | undefined, processValue: number | string | null | undefined) {
+  const summary = num(summaryValue);
+  const process = num(processValue);
+  return summary > 0 || process <= 0 ? summary : process;
+}
+
 export default async function ProcessesPage({ searchParams }: { searchParams: SearchParams }) {
   const organization = await getCurrentOrganization();
   if (!organization) return null;
@@ -70,12 +81,14 @@ export default async function ProcessesPage({ searchParams }: { searchParams: Se
             {processes.map((process) => {
               const deleteAction = deleteProcessAction.bind(null, process.id);
               const financialSummary = summaryByProcess.get(process.id);
+              const approvedTotal = moneyFromSummary(financialSummary?.approved_total, process.fee_arbitrated);
+              const receivedTotal = moneyFromSummary(financialSummary?.received_total, process.fee_received);
               return (
                 <article className="entity-list-item" key={process.id}>
                   <Link className="entity-list-link process-list-row" href={`/processos/${process.id}`}>
                     <div><strong>{process.process_number}</strong><span>{process.plaintiff || "Autor não informado"} × {process.defendant || "Réu não informado"}</span><small>{process.subject || "Objeto não informado"}</small></div>
                     <div><small>{process.court || "Tribunal não informado"}</small><strong>{process.district || "Comarca não informada"}</strong><span>Laudo: {formatDate(process.report_due_at)}</span></div>
-                    {canViewFinance && <div><small>Arbitrado / recebido</small><strong>{formatCurrency(financialSummary?.approved_total ?? process.fee_arbitrated)}</strong><span>{formatCurrency(financialSummary?.received_total ?? process.fee_received)}</span></div>}
+                    {canViewFinance && <div><small>Arbitrado / recebido</small><strong>{formatCurrency(approvedTotal)}</strong><span>{formatCurrency(receivedTotal)}</span></div>}
                     <span className={`status status-${process.status}`}>{processStatusLabel(process.status)}</span>
                   </Link>
                   {canDelete && <DeleteProcessButton action={deleteAction} processNumber={process.process_number} compact />}

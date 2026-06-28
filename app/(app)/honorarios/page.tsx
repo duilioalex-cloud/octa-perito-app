@@ -27,28 +27,52 @@ function num(value: number | string | null | undefined) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function moneyFromSummary(summaryValue: number | string | null | undefined, processValue: number | string | null | undefined) {
+  const summary = num(summaryValue);
+  const process = num(processValue);
+  return summary > 0 || process <= 0 ? summary : process;
+}
+
 export default async function FeesPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; error?: string; success?: string }> }) {
   const query = await searchParams;
   const organization = await requireCurrentOrganization("finance:view");
   const supabase = await createClient();
 
-  const [{ data: dashboard }, { data: rows, error }] = await Promise.all([
+  const [{ data: dashboard }, { data: rows, error }, { data: processFallbacks }] = await Promise.all([
     supabase.from("organization_financial_dashboard").select("*").eq("organization_id", organization.id).maybeSingle(),
     supabase.from("process_financial_summary").select("*").eq("organization_id", organization.id).order("last_movement_at", { ascending: false }),
+    supabase.from("processes").select("id,fee_proposed,fee_arbitrated,fee_deposited,fee_received").eq("organization_id", organization.id),
   ]);
+  const processFallbackById = new Map((processFallbacks || []).map((process) => [process.id, process]));
 
   const search = (query.q || "").trim().toLocaleLowerCase("pt-BR");
   const selectedStatus = query.status || "all";
-  const filtered = ((rows || []) as FinancialRow[]).filter((row) => {
+  const allRows = (rows || []) as FinancialRow[];
+  const filtered = allRows.filter((row) => {
     const matchesSearch = !search || `${row.process_number} ${row.subject || ""}`.toLocaleLowerCase("pt-BR").includes(search);
     const matchesStatus = selectedStatus === "all" || row.financial_status === selectedStatus;
     return matchesSearch && matchesStatus;
   });
 
-  const approved = num(dashboard?.approved_total);
-  const deposited = num(dashboard?.deposited_total);
-  const received = num(dashboard?.received_total);
-  const depositBalance = num(dashboard?.deposit_balance);
+  const effectiveTotals = allRows.reduce((totals, row) => {
+    const processFallback = processFallbackById.get(row.process_id);
+    const proposed = moneyFromSummary(row.proposed_total, processFallback?.fee_proposed);
+    const approved = moneyFromSummary(row.approved_total, processFallback?.fee_arbitrated);
+    const deposited = moneyFromSummary(row.deposited_total, processFallback?.fee_deposited);
+    const received = moneyFromSummary(row.received_total, processFallback?.fee_received);
+    totals.proposed += proposed;
+    totals.approved += approved;
+    totals.deposited += deposited;
+    totals.received += received;
+    totals.depositBalance += Math.max(deposited - received, 0);
+    return totals;
+  }, { proposed: 0, approved: 0, deposited: 0, received: 0, depositBalance: 0 });
+
+  const proposed = Math.max(num(dashboard?.proposed_total), effectiveTotals.proposed);
+  const approved = Math.max(num(dashboard?.approved_total), effectiveTotals.approved);
+  const deposited = Math.max(num(dashboard?.deposited_total), effectiveTotals.deposited);
+  const received = Math.max(num(dashboard?.received_total), effectiveTotals.received);
+  const depositBalance = Math.max(num(dashboard?.deposit_balance), effectiveTotals.depositBalance);
   const toDeposit = Math.max(approved - deposited, 0);
 
   return (
@@ -70,7 +94,7 @@ export default async function FeesPage({ searchParams }: { searchParams: Promise
       {error && <div className="notice notice-error">Não foi possível consultar o painel financeiro. Confirme se a migração 007 foi executada.</div>}
 
       <section className="stats-grid finance-stats-grid">
-        <article className="card stat-card"><span>Total proposto</span><strong>{formatCurrency(dashboard?.proposed_total)}</strong><small>Valores apresentados nos processos</small></article>
+        <article className="card stat-card"><span>Total proposto</span><strong>{formatCurrency(proposed)}</strong><small>Valores apresentados nos processos</small></article>
         <article className="card stat-card"><span>Total homologado</span><strong>{formatCurrency(approved)}</strong><small>Receita prevista aprovada</small></article>
         <article className="card stat-card"><span>Total depositado</span><strong>{formatCurrency(deposited)}</strong><small>Saldo judicial atual: {formatCurrency(depositBalance)}</small></article>
         <article className="card stat-card"><span>Total levantado</span><strong>{formatCurrency(received)}</strong><small>A receber por depósito: {formatCurrency(toDeposit)}</small></article>
@@ -101,9 +125,10 @@ export default async function FeesPage({ searchParams }: { searchParams: Promise
         ) : (
           <div className="finance-process-list">
             {filtered.map((row) => {
-              const approvedAmount = num(row.approved_total);
-              const depositedAmount = num(row.deposited_total);
-              const receivedAmount = num(row.received_total);
+              const processFallback = processFallbackById.get(row.process_id);
+              const approvedAmount = moneyFromSummary(row.approved_total, processFallback?.fee_arbitrated);
+              const depositedAmount = moneyFromSummary(row.deposited_total, processFallback?.fee_deposited);
+              const receivedAmount = moneyFromSummary(row.received_total, processFallback?.fee_received);
               return (
                 <Link className="finance-process-row" href={`/honorarios/${row.process_id}`} key={row.process_id}>
                   <div className="finance-process-main"><strong>{row.process_number}</strong><span>{row.subject || "Objeto não informado"}</span></div>

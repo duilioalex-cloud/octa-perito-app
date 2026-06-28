@@ -36,6 +36,14 @@ function roundMoney(value: number) {
   return Math.round((Number.isFinite(value) ? value : 0) * 100) / 100;
 }
 
+function firstPositive(...values: unknown[]) {
+  for (const value of values) {
+    const parsed = Number(value ?? 0);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 0;
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -223,11 +231,12 @@ function buildFeeProposalDocument(input: {
   process: any;
   fee: any;
 }) {
-  const proposedAmount = Number(input.fee?.proposed_amount ?? 0);
-  const advancePercentage = clamp(Number(input.fee?.advance_percentage ?? 0), 0, 100);
-  const advanceAmount = roundMoney(proposedAmount * (advancePercentage / 100));
-  const balanceAmount = roundMoney(proposedAmount - advanceAmount);
   const calculator = (input.fee?.metadata as any)?.calculator || {};
+  const proposedAmount = Number(input.fee?.proposed_amount ?? 0);
+  const amountToCharge = firstPositive((input.fee?.metadata as any)?.charged_amount, calculator.charged_amount, calculator.totals?.amount_to_charge, proposedAmount);
+  const advancePercentage = clamp(Number(input.fee?.advance_percentage ?? 0), 0, 100);
+  const advanceAmount = roundMoney(amountToCharge * (advancePercentage / 100));
+  const balanceAmount = roundMoney(amountToCharge - advanceAmount);
   const memoryText = String(calculator.memory_text || input.fee?.notes || "").trim();
   const courtLine = [input.process.division, input.process.district, input.process.court].filter(Boolean).join(" - ") || "Juizo competente";
   const partiesLine = [input.process.plaintiff, input.process.defendant].filter(Boolean).join(" x ");
@@ -257,7 +266,8 @@ function buildFeeProposalDocument(input: {
     "",
     "4. VALOR A COBRAR",
     "",
-    `Valor total da proposta de honorarios: ${currency(proposedAmount)}.`,
+    `Honorarios propostos informados: ${currency(proposedAmount)}.`,
+    `Valor cobrado pelo perito: ${currency(amountToCharge)}.`,
     `Deposito inicial sugerido (${advancePercentage.toLocaleString("pt-BR")}%): ${currency(advanceAmount)}.`,
     `Saldo sugerido apos entrega do laudo e esclarecimentos: ${currency(balanceAmount)}.`,
     "",
@@ -303,6 +313,9 @@ export async function generateFeeProposalDocumentAction(processId: string) {
 
   const title = `Proposta de honorarios - ${process.process_number}`;
   const content = buildFeeProposalDocument({ organizationName: organization.name, process, fee });
+  const feeMetadata = ((fee.metadata || {}) as Record<string, any>) || {};
+  const calculator = feeMetadata.calculator || {};
+  const amountToCharge = firstPositive(feeMetadata.charged_amount, calculator.charged_amount, calculator.totals?.amount_to_charge, proposedAmount);
   const { data: document, error } = await supabase.from("generated_documents").insert({
     organization_id: organization.id,
     process_id: processId,
@@ -314,6 +327,7 @@ export async function generateFeeProposalDocumentAction(processId: string) {
       fee_id: fee.id,
       process_number: process.process_number,
       proposed_amount: proposedAmount,
+      amount_to_charge: amountToCharge,
     },
     status: "draft",
     version: 1,
@@ -377,20 +391,25 @@ export async function saveFeeCalculatorAction(processId: string, feeId: string |
   const directExpensesTotal = roundMoney(Object.values(expenseItems).reduce((sum, value) => sum + value, 0));
 
   const totalSuggested = roundMoney(professionalTotal + directExpensesTotal);
+  const calculatedTotal = Math.max(0, decimal(formData, "calculated_total", totalSuggested)) || totalSuggested;
+  const manualProposedAmount = Math.max(0, decimal(formData, "manual_proposed_amount"));
+  const amountToChargeInput = Math.max(0, decimal(formData, "amount_to_charge", calculatedTotal));
+  const amountToCharge = amountToChargeInput > 0 ? amountToChargeInput : calculatedTotal > 0 ? calculatedTotal : manualProposedAmount;
+  const proposalAmount = manualProposedAmount > 0 ? manualProposedAmount : amountToCharge;
   const advancePercentage = clamp(decimal(formData, "advance_percentage", 50), 0, 100);
-  const advanceAmount = roundMoney(totalSuggested * (advancePercentage / 100));
+  const advanceAmount = roundMoney(amountToCharge * (advancePercentage / 100));
   const tableLimit = Math.max(0, decimal(formData, "table_limit_amount"));
   const legalAid = formData.get("legal_aid") === "on" || formData.get("legal_aid") === "true";
   const tableName = text(formData, "applicable_table");
-  const aboveTable = tableLimit > 0 && totalSuggested > tableLimit;
+  const aboveTable = tableLimit > 0 && amountToCharge > tableLimit;
   const expertiseArea = text(formData, "calculator_expertise_area") || process.expertise_area || process.subject || "Perícia judicial";
   const justiceBranch = text(formData, "justice_branch") || process.court || "";
   const responsibilityType = text(formData, "responsibility_type") || (legalAid ? "legal_aid" : "not_defined");
   const responsibleParty = nullableText(formData, "responsible_party");
   const customJustification = nullableText(formData, "custom_justification");
 
-  if (baseHours <= 0 && professionalTotal <= 0 && directExpensesTotal <= 0) {
-    redirectProcessError(processId, "Informe horas, valor técnico ou despesas para calcular a proposta.");
+  if (baseHours <= 0 && professionalTotal <= 0 && directExpensesTotal <= 0 && proposalAmount <= 0 && amountToCharge <= 0) {
+    redirectProcessError(processId, "Informe horas, valor tecnico, despesas ou um valor manual de honorarios.");
   }
 
   const memoryText = buildFeeCalculatorMemory({
@@ -404,7 +423,7 @@ export async function saveFeeCalculatorAction(processId: string, feeId: string |
     complexity,
     professionalTotal,
     directExpensesTotal,
-    totalSuggested,
+    totalSuggested: amountToCharge,
     advancePercentage,
     advanceAmount,
     tableName,
@@ -417,8 +436,14 @@ export async function saveFeeCalculatorAction(processId: string, feeId: string |
 
   const calculatorMetadata = {
     source: "fee_calculator",
-    version: "0.9.9",
+    version: "0.9.11",
+    calculated_total: calculatedTotal,
+    manual_proposed_amount: proposalAmount,
+    charged_amount: amountToCharge,
     calculator: {
+      calculated_total: calculatedTotal,
+      manual_proposed_amount: proposalAmount,
+      charged_amount: amountToCharge,
       expertise_area: expertiseArea,
       justice_branch: justiceBranch,
       legal_aid: legalAid,
@@ -448,7 +473,10 @@ export async function saveFeeCalculatorAction(processId: string, feeId: string |
         tax_amount: taxAmount,
         professional_total: professionalTotal,
         direct_expenses_total: directExpensesTotal,
-        total_suggested: totalSuggested,
+        calculated_total_suggested: calculatedTotal,
+        total_suggested: amountToCharge,
+        proposed_amount: proposalAmount,
+        amount_to_charge: amountToCharge,
         advance_percentage: advancePercentage,
         advance_amount: advanceAmount,
       },
@@ -481,7 +509,7 @@ export async function saveFeeCalculatorAction(processId: string, feeId: string |
     funding_mode: legalAid ? "legal_aid" : "court_deposit",
     responsibility_type: responsibilityType,
     responsible_party: responsibleParty,
-    proposed_amount: totalSuggested,
+    proposed_amount: proposalAmount,
     advance_percentage: advancePercentage,
     proposed_at: todayInBrasilia(),
     notes: memoryText,
@@ -506,7 +534,7 @@ export async function saveFeeCalculatorAction(processId: string, feeId: string |
 
   await supabase
     .from("processes")
-    .update({ fee_proposed: totalSuggested })
+    .update({ fee_proposed: proposalAmount })
     .eq("id", processId)
     .eq("organization_id", organization.id);
 
@@ -563,6 +591,8 @@ export async function saveFeeCalculatorAction(processId: string, feeId: string |
     description: "Calculadora de honorários atualizada.",
     metadata: {
       total_suggested: totalSuggested,
+      proposed_amount: proposalAmount,
+      amount_to_charge: amountToCharge,
       professional_total: professionalTotal,
       direct_expenses_total: directExpensesTotal,
       base_hours: baseHours,
@@ -579,6 +609,20 @@ export async function saveFeeCalculatorAction(processId: string, feeId: string |
 
 export async function savePrimaryFeeAction(processId: string, feeId: string | null, formData: FormData) {
   const { organization, supabase, user } = await ensureProcess(processId);
+  const inputProposedAmount = Math.max(0, decimal(formData, "proposed_amount"));
+  const inputChargedAmount = Math.max(0, decimal(formData, "charged_amount"));
+  const chargedAmount = inputChargedAmount > 0 ? inputChargedAmount : inputProposedAmount;
+  let existingMetadata: Record<string, any> = {};
+  if (feeId) {
+    const { data: existingFee } = await supabase
+      .from("process_fees")
+      .select("metadata")
+      .eq("id", feeId)
+      .eq("process_id", processId)
+      .eq("organization_id", organization.id)
+      .maybeSingle();
+    existingMetadata = ((existingFee?.metadata || {}) as Record<string, any>) || {};
+  }
 
   const payload = {
     organization_id: organization.id,
@@ -590,7 +634,7 @@ export async function savePrimaryFeeAction(processId: string, feeId: string | nu
     responsibility_type: text(formData, "responsibility_type") || "not_defined",
     responsible_party: nullableText(formData, "responsible_party"),
     initial_arbitrated_amount: Math.max(0, decimal(formData, "initial_arbitrated_amount")),
-    proposed_amount: Math.max(0, decimal(formData, "proposed_amount")),
+    proposed_amount: inputProposedAmount || chargedAmount,
     approved_amount: Math.max(0, decimal(formData, "approved_amount")),
     advance_percentage: Math.min(100, Math.max(0, decimal(formData, "advance_percentage"))),
     opening_deposited_amount: Math.max(0, decimal(formData, "opening_deposited_amount")),
@@ -601,6 +645,12 @@ export async function savePrimaryFeeAction(processId: string, feeId: string | nu
     release_requested_at: nullableDate(formData, "release_requested_at"),
     closed_at: nullableDate(formData, "closed_at"),
     notes: nullableText(formData, "notes"),
+    metadata: {
+      ...existingMetadata,
+      charged_amount: chargedAmount,
+      manual_source: "finance_form",
+      version: "0.9.11",
+    },
     is_primary: true,
   };
 

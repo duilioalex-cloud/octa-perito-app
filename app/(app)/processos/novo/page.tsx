@@ -42,7 +42,8 @@ export default async function NewProcessPage({ searchParams }: { searchParams: P
 
           <div className="form-section"><h2>Honorários</h2><p>Informe apenas valores conhecidos. Eles poderão ser atualizados depois.</p></div>
           <div className="form-grid">
-            <label className="field"><span>Valor proposto (R$)</span><input className="input" name="fee_proposed" inputMode="decimal" placeholder="0,00" /></label>
+            <label className="field"><span>Honorarios propostos (R$)</span><input className="input" name="fee_proposed" inputMode="decimal" placeholder="0,00" /></label>
+            <label className="field"><span>Valor que o perito cobrou (R$)</span><input className="input" name="fee_charged" inputMode="decimal" placeholder="0,00" /></label>
             <label className="field"><span>Valor arbitrado (R$)</span><input className="input" name="fee_arbitrated" inputMode="decimal" placeholder="0,00" /></label>
             <label className="field"><span>Valor depositado (R$)</span><input className="input" name="fee_deposited" inputMode="decimal" placeholder="0,00" /></label>
             <label className="field"><span>Valor recebido (R$)</span><input className="input" name="fee_received" inputMode="decimal" placeholder="0,00" /></label>
