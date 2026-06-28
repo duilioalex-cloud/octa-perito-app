@@ -715,7 +715,17 @@ on conflict (report_type_id, section_key) do update set
   is_enabled_default = excluded.is_enabled_default,
   metadata = excluded.metadata;
 
-insert into public.technical_blocks as tb_target (
+delete from public.technical_blocks
+where organization_id is null
+  and slug in (
+    'sst_metodologia_insalubridade_nr15',
+    'sst_metodologia_periculosidade_nr16',
+    'sst_epi_epc_eficacia',
+    'sst_agentes_biologicos_anexo14',
+    'sst_conclusao_dupla_insalubridade_periculosidade'
+  );
+
+insert into public.technical_blocks (
   organization_id, slug, title, specialty, category, description, content,
   variables, review_warnings, is_octa_model, status, version, source_label, created_by
 ) values
@@ -743,16 +753,4 @@ insert into public.technical_blocks as tb_target (
    'Bloco para fechar conclusao dupla sem invadir materia juridica.',
    'Com base nos documentos analisados, nas informacoes colhidas, na diligencia realizada e nos criterios normativos aplicaveis, conclui-se tecnicamente quanto a insalubridade: {{conclusao_final_insalubridade}}. Quanto a periculosidade: {{conclusao_final_periculosidade}}. A apreciacao juridica dos reflexos da prova tecnica permanece reservada ao Juizo.',
    array['conclusao_final_insalubridade','conclusao_final_periculosidade']::text[],
-   array['Separar claramente conclusao de insalubridade e conclusao de periculosidade.']::text[], true, 'active', 1, 'OCTA Perito - Seguranca do Trabalho', null)
-on conflict (slug) where organization_id is null do update set
-  title = excluded.title,
-  specialty = excluded.specialty,
-  category = excluded.category,
-  description = excluded.description,
-  content = excluded.content,
-  variables = excluded.variables,
-  review_warnings = excluded.review_warnings,
-  is_octa_model = true,
-  status = 'active',
-  version = greatest(tb_target.version, excluded.version),
-  source_label = excluded.source_label;
+   array['Separar claramente conclusao de insalubridade e conclusao de periculosidade.']::text[], true, 'active', 1, 'OCTA Perito - Seguranca do Trabalho', null);
