@@ -1,6 +1,22 @@
 -- OCTA Perito v0.9.12 - Modelo de Laudo de Seguranca do Trabalho.
 -- Modelo anonimizado e consolidado para pericias de insalubridade e periculosidade.
 
+delete from public.report_section_templates
+where report_type_id in (
+  select id
+  from public.report_types
+  where slug = 'laudo_seguranca_trabalho_insalubridade_periculosidade'
+    and organization_id is null
+);
+
+delete from public.report_types
+where slug = 'laudo_seguranca_trabalho_insalubridade_periculosidade'
+  and organization_id is null;
+
+delete from public.templates
+where slug = 'laudo_seguranca_trabalho_insalubridade_periculosidade'
+  and organization_id is null;
+
 insert into public.templates (
   organization_id, slug, title, category, document_type, specialty, description,
   content, variables, legal_basis, is_octa_model, version, status, revision_date,
@@ -382,21 +398,7 @@ Nada mais havendo a acrescentar, encerra-se o presente Laudo Tecnico Pericial.
   'Biblioteca Tecnica OCTA Perito - Seguranca do Trabalho',
   130,
   null
-)
-on conflict (slug) where organization_id is null do update set
-  title = excluded.title,
-  category = excluded.category,
-  document_type = excluded.document_type,
-  specialty = excluded.specialty,
-  description = excluded.description,
-  content = excluded.content,
-  variables = excluded.variables,
-  legal_basis = excluded.legal_basis,
-  is_octa_model = true,
-  status = 'active',
-  revision_date = current_date,
-  source_label = excluded.source_label,
-  sort_order = excluded.sort_order;
+);
 
 insert into public.report_types as rt_target (
   organization_id, slug, name, specialty, description,
@@ -412,15 +414,7 @@ insert into public.report_types as rt_target (
   1,
   'Biblioteca Tecnica OCTA Perito - Seguranca do Trabalho',
   null
-)
-on conflict (slug) where organization_id is null do update set
-  name = excluded.name,
-  specialty = excluded.specialty,
-  description = excluded.description,
-  is_octa_model = true,
-  status = 'active',
-  version = greatest(rt_target.version, excluded.version),
-  source_label = excluded.source_label;
+);
 
 with rt as (
   select id from public.report_types
@@ -451,7 +445,7 @@ Pontos controvertidos:
 {{pontos_controvertidos}}$s$,
       array['objeto_pericia','periodo_analisado','cargo_funcao','local_trabalho','pontos_controvertidos']::text[],
       array['Nao ampliar o objeto alem dos pontos tecnicos admitidos nos autos.']::text[], 20, true, true, '{}'::jsonb),
-    ('fundamentacao', 'Fundamentacao legal e tecnica', 'CLT, NRs, NHO e documentos de SST.', 'legal_basis',
+    ('fundamentacao', 'Fundamentacao legal e tecnica', 'CLT, NRs, NHO e documentos de SST.', 'rich_text',
       $s$Foram consideradas as normas e referencias aplicaveis ao caso concreto, especialmente CLT, NR-01, NR-06, NR-09, NR-15, NR-16 e NHO/Fundacentro quando pertinentes.
 
 Referencias complementares:
@@ -473,7 +467,7 @@ Sintese da defesa:
 {{sintese_defesa}}$s$,
       array['sintese_inicial','sintese_defesa']::text[],
       array['Separar alegacao de fato constatado.']::text[], 50, false, true, '{}'::jsonb),
-    ('diligencia', 'Diligencia pericial', 'Data, local, participantes e procedimentos.', 'inspection',
+    ('diligencia', 'Diligencia pericial', 'Data, local, participantes e procedimentos.', 'rich_text',
       $s$Data e horario: {{data_vistoria}}
 Local: {{local_vistoriado}}
 Presentes: {{participantes_vistoria}}
@@ -509,7 +503,7 @@ Equipamentos, produtos e fontes de risco:
 {{equipamentos_produtos_fontes}}$s$,
       array['descricao_ambiente','caracteristicas_local','jornada_rotina','descricao_atividades','equipamentos_produtos_fontes']::text[],
       array['A conclusao deve se apoiar nas atividades efetivas, nao apenas no nome do cargo.']::text[], 70, true, true, '{}'::jsonb),
-    ('metodologia', 'Metodologia de avaliacao', 'Criterios qualitativos, quantitativos e instrumentos.', 'methodology',
+    ('metodologia', 'Metodologia de avaliacao', 'Criterios qualitativos, quantitativos e instrumentos.', 'rich_text',
       $s$Metodologia adotada:
 
 {{metodologia_avaliacao}}
@@ -527,7 +521,7 @@ Criterios de exposicao:
 {{criterios_exposicao}}$s$,
       array['metodologia_avaliacao','instrumentos_utilizados','certificados_calibracao','criterios_exposicao']::text[],
       array['Distinguir avaliacao qualitativa de quantitativa e citar o criterio normativo aplicavel.']::text[], 80, true, true, '{}'::jsonb),
-    ('epi_epc', 'EPI, EPC e medidas de controle', 'Fornecimento, CA, treinamento, uso efetivo e eficacia.', 'analysis',
+    ('epi_epc', 'EPI, EPC e medidas de controle', 'Fornecimento, CA, treinamento, uso efetivo e eficacia.', 'rich_text',
       $s$EPI informados/comprovados:
 
 {{epis_fornecidos}}
@@ -549,7 +543,7 @@ Analise de eficacia:
 {{analise_eficacia_protecao}}$s$,
       array['epis_fornecidos','comprovacao_epi','epcs_medidas_coletivas','medidas_administrativas','analise_eficacia_protecao']::text[],
       array['Nao considerar EPI eficaz sem analisar adequacao, CA, treinamento, troca, uso e fiscalizacao.']::text[], 90, true, true, '{}'::jsonb),
-    ('insalubridade', 'Analise de insalubridade - NR-15', 'Agentes fisicos, quimicos, biologicos e resumo.', 'analysis',
+    ('insalubridade', 'Analise de insalubridade - NR-15', 'Agentes fisicos, quimicos, biologicos e resumo.', 'rich_text',
       $s$Ruido:
 
 {{analise_ruido}}
@@ -594,7 +588,7 @@ Conclusao quanto a insalubridade: {{conclusao_insalubridade}}
 Grau: {{grau_insalubridade}}$s$,
       array['analise_ruido','analise_calor','analise_outros_agentes_fisicos','produtos_quimicos_avaliados','exposicao_quimicos','analise_quimicos','atividades_agentes_biologicos','fontes_biologicas','analise_biologicos','resumo_agentes_insalubridade','conclusao_insalubridade','grau_insalubridade']::text[],
       array['Caracterizar somente quando houver enquadramento na NR-15 e suporte tecnico suficiente.']::text[], 100, true, true, '{}'::jsonb),
-    ('periculosidade', 'Analise de periculosidade - NR-16', 'Inflamaveis, explosivos, eletricidade, seguranca, motocicleta e radiacoes.', 'analysis',
+    ('periculosidade', 'Analise de periculosidade - NR-16', 'Inflamaveis, explosivos, eletricidade, seguranca, motocicleta e radiacoes.', 'rich_text',
       $s$Inflamaveis:
 
 {{analise_inflamaveis}}
@@ -702,18 +696,7 @@ insert into public.report_section_templates (
 select rt.id, seed.section_key, seed.title, seed.description, seed.content_kind,
        seed.default_content, seed.variables, seed.warnings, seed.sort_order,
        seed.required, seed.enabled, seed.metadata, null
-from rt cross join seed
-on conflict (report_type_id, section_key) do update set
-  title = excluded.title,
-  description = excluded.description,
-  content_kind = excluded.content_kind,
-  default_content = excluded.default_content,
-  variables = excluded.variables,
-  review_warnings = excluded.review_warnings,
-  sort_order = excluded.sort_order,
-  is_required = excluded.is_required,
-  is_enabled_default = excluded.is_enabled_default,
-  metadata = excluded.metadata;
+from rt cross join seed;
 
 delete from public.technical_blocks
 where organization_id is null
